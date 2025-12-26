@@ -3,3 +3,4 @@
 .amocrm_tokens.json
 tmp/
 /bot
+.genkit
