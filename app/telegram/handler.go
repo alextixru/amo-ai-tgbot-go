@@ -9,22 +9,22 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/tihn/amo-ai-tgbot-go/infrastructure/ai"
-	"github.com/tihn/amo-ai-tgbot-go/infrastructure/crm"
+	"github.com/tihn/amo-ai-tgbot-go/app/ai"
+	"github.com/tihn/amo-ai-tgbot-go/app/crm"
 )
 
 // Handler processes Telegram messages
 type Handler struct {
 	agent *ai.Agent
-	crm   *crm.Client
+	crm   *crm.Service
 	debug bool
 }
 
-// NewHandler creates a new Handler with AI agent and CRM client
-func NewHandler(agent *ai.Agent, crmClient *crm.Client, debug bool) *Handler {
+// NewHandler creates a new Handler with AI agent and CRM service
+func NewHandler(agent *ai.Agent, crmService *crm.Service, debug bool) *Handler {
 	return &Handler{
 		agent: agent,
-		crm:   crmClient,
+		crm:   crmService,
 		debug: debug,
 	}
 }

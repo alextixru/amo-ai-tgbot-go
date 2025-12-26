@@ -1,16 +1,28 @@
 # Infrastructure Layer
 
-Адаптеры к внешним системам.
+Клиенты и адаптеры к внешним системам.
 
-## Структура
+## Пакеты
 
-- `ai/` — Genkit/Ollama адаптер
-- `config/` — Конфигурация
-- `crm/` — amoCRM SDK адаптер
-- `telegram/` — Telegram обработчик
+| Пакет | Файл | Назначение |
+|-------|------|------------|
+| `genkit/` | `client.go` | Genkit + Ollama клиент |
+| `telegram/` | `bot.go` | Telegram Bot API клиент |
+| `crm/` | `client.go` | amoCRM SDK обёртка |
+| `config/` | `config.go` | Конфигурация из ENV |
 
-## Правила
+## Принцип
 
-1. Реализует интерфейсы из `domain/ports/`
-2. Зависит от `domain/` и `application/`
-3. Содержит всю работу с внешними API
+Infrastructure содержит **клиенты** — инициализацию и подключение.
+
+Бизнес-логика (AI Agent, Telegram обработчики) находится в `app/`.
+
+## Зависимости
+
+```
+cmd/bot/main.go
+    ├── infrastructure/genkit   → создаёт Client
+    ├── infrastructure/telegram → создаёт Bot  
+    ├── infrastructure/crm      → создаёт Client
+    └── infrastructure/config   → загружает Config
+```

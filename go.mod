@@ -5,7 +5,7 @@ go 1.24.1
 require github.com/go-telegram/bot v1.12.1
 
 require (
-	github.com/alextixru/amocrm-sdk-go v0.0.0-20251226102155-7a0601be831a
+	github.com/alextixru/amocrm-sdk-go v0.1.0
 	github.com/firebase/genkit/go v1.2.0
 	github.com/joho/godotenv v1.5.1
 )

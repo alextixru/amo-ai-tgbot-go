@@ -2,4 +2,4 @@
 .env.local
 .amocrm_tokens.json
 tmp/
-bot
+/bot
