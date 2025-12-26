@@ -24,8 +24,8 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 	// Initialize Genkit with plugin
 	g := genkit.Init(ctx, genkit.WithPlugins(plugin))
 
-	// Initialize model from provider
-	model := providers.InitOllama(g, cfg)
+	// Initialize model from provider (using the same plugin instance)
+	model := providers.InitOllama(g, plugin, cfg)
 
 	return &Client{
 		G:     g,

@@ -9,9 +9,7 @@ import (
 )
 
 // InitOllama initializes Ollama provider and returns the model
-func InitOllama(g *genkit.Genkit, cfg *config.Config) ai.Model {
-	plugin := &ollama.Ollama{ServerAddress: cfg.OllamaURL}
-
+func InitOllama(g *genkit.Genkit, plugin *ollama.Ollama, cfg *config.Config) ai.Model {
 	model := plugin.DefineModel(g, ollama.ModelDefinition{
 		Name: cfg.OllamaModel,
 		Type: "chat",
