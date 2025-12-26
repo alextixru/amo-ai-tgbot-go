@@ -1,8 +1,8 @@
 {
-  "id": "47414-3100",
-  "pid": 47414,
+  "id": "52006-3100",
+  "pid": 52006,
   "reflectionServerUrl": "http://127.0.0.1:3100",
-  "timestamp": "2025-12-26T14_51_01Z",
+  "timestamp": "2025-12-26T16_09_50Z",
   "genkitVersion": "go/1.2.0",
   "reflectionApiSpecVersion": 1
 }

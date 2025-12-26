@@ -52,11 +52,11 @@ func main() {
 
 	// === Application ===
 
-	// AI agent
-	agent := gkit.NewAgent(genkitClient)
-
 	// CRM service (business logic)
 	crmService := appCRM.NewService(crmClient)
+
+	// AI agent (needs crmService for tools)
+	agent := gkit.NewAgent(genkitClient)
 
 	// Telegram handler
 	handler := tgHandler.NewHandler(agent, crmService, cfg.Debug)
