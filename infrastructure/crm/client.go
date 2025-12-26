@@ -7,7 +7,7 @@ import (
 	"github.com/alextixru/amocrm-sdk-go"
 	"github.com/alextixru/amocrm-sdk-go/core/oauth"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/config"
+	"github.com/tihn/amo-ai-tgbot-go/infrastructure/config"
 )
 
 // Client wraps amoCRM SDK

@@ -7,7 +7,7 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/firebase/genkit/go/plugins/ollama"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/config"
+	"github.com/tihn/amo-ai-tgbot-go/infrastructure/config"
 )
 
 // Agent handles AI processing with Genkit

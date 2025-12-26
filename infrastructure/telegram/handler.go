@@ -9,8 +9,8 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/ai"
-	"github.com/tihn/amo-ai-tgbot-go/internal/crm"
+	"github.com/tihn/amo-ai-tgbot-go/infrastructure/ai"
+	"github.com/tihn/amo-ai-tgbot-go/infrastructure/crm"
 )
 
 // Handler processes Telegram messages
