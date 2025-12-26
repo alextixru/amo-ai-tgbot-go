@@ -1,5 +1,5 @@
-github.com/alextixru/amocrm-sdk-go v0.3.0 h1:NHoXlQsnSKTRBlc33LDzb9Z2pdPVFc95/jW2HcSoUn8=
-github.com/alextixru/amocrm-sdk-go v0.3.0/go.mod h1:nlBHcA0wEOoo57dM5KOshJuCT8AqCbHcqRSyKj5/02A=
+github.com/alextixru/amocrm-sdk-go v0.3.3 h1:hhGWESSBCbNxgboCb2fxFJFpFgCNBRGyfO+b0rGDtLc=
+github.com/alextixru/amocrm-sdk-go v0.3.3/go.mod h1:nlBHcA0wEOoo57dM5KOshJuCT8AqCbHcqRSyKj5/02A=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
 github.com/buger/jsonparser v1.1.1 h1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=

@@ -6,6 +6,5 @@ tmp/
 .genkit
 tokens.json
 .amocrm_tokens.json
-scripts/oauth_setup.go
-scripts/oauth_setup
+scripts/
 oauth_setup
