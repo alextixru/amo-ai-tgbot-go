@@ -1,4 +1,4 @@
-package ai
+package gkit
 
 // CRM Tools for Genkit
 // TODO: Define tools:

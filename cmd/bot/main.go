@@ -9,8 +9,8 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/ai"
 	appCRM "github.com/tihn/amo-ai-tgbot-go/app/crm"
+	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/infrastructure/config"
 	"github.com/tihn/amo-ai-tgbot-go/infrastructure/crm"
@@ -53,7 +53,7 @@ func main() {
 	// === Application ===
 
 	// AI agent
-	agent := ai.NewAgent(genkitClient)
+	agent := gkit.NewAgent(genkitClient)
 
 	// CRM service (business logic)
 	crmService := appCRM.NewService(crmClient)
