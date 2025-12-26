@@ -2,10 +2,10 @@
 model: ollama/qwen2.5:14b
 input:
   schema:
-    message: string
+    query: string
 ---
 {{#system}}
 Ты дружелюбный помощник. Отвечай кратко и по делу.
 {{/system}}
 
-{{message}}
+{{query}}

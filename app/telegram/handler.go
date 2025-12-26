@@ -11,21 +11,24 @@ import (
 
 	"github.com/tihn/amo-ai-tgbot-go/app/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
+	appctx "github.com/tihn/amo-ai-tgbot-go/app/gkit/context"
 )
 
 // Handler processes Telegram messages
 type Handler struct {
-	agent *gkit.Agent
-	crm   *crm.Service
-	debug bool
+	agent      *gkit.Agent
+	crm        *crm.Service
+	ctxBuilder *appctx.Builder
+	debug      bool
 }
 
 // NewHandler creates a new Handler with AI agent and CRM service
 func NewHandler(agent *gkit.Agent, crmService *crm.Service, debug bool) *Handler {
 	return &Handler{
-		agent: agent,
-		crm:   crmService,
-		debug: debug,
+		agent:      agent,
+		crm:        crmService,
+		ctxBuilder: appctx.NewBuilder(crmService.Client().SDK()),
+		debug:      debug,
 	}
 }
 
@@ -43,6 +46,7 @@ func (h *Handler) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 
 	text := update.Message.Text
 	chatID := update.Message.Chat.ID
+	telegramUserID := update.Message.From.ID
 
 	h.debugLog("📨 Received message: %q from chat %d", text, chatID)
 
@@ -62,9 +66,12 @@ func (h *Handler) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 	case strings.HasPrefix(text, "/"):
 		response = "❓ Неизвестная команда. Используй /start для списка команд."
 	default:
+		// Build user context
+		userCtx := h.ctxBuilder.MustBuild(ctx, telegramUserID)
+
 		// Process with AI
 		h.debugLog("🤖 Sending to Ollama...")
-		response, err = h.agent.Process(ctx, text)
+		response, err = h.agent.Process(ctx, text, userCtx.ToMap())
 		if err != nil {
 			log.Printf("AI error: %v", err)
 			response = fmt.Sprintf("❌ Ошибка AI: %v", err)

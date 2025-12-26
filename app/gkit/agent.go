@@ -32,9 +32,12 @@ func NewAgent(client *genkitClient.Client) *Agent {
 	}
 }
 
-// Process processes a user message using the chat flow
-func (a *Agent) Process(ctx context.Context, message string) (string, error) {
-	output, err := a.chatFlow(ctx, flows.ChatInput{Message: message})
+// Process processes a user message using the chat flow with user context
+func (a *Agent) Process(ctx context.Context, message string, userContext map[string]any) (string, error) {
+	output, err := a.chatFlow(ctx, flows.ChatInput{
+		Message:     message,
+		UserContext: userContext,
+	})
 	if err != nil {
 		return "", err
 	}
