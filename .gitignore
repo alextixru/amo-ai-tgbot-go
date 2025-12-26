@@ -4,3 +4,8 @@
 tmp/
 /bot
 .genkit
+tokens.json
+.amocrm_tokens.json
+scripts/oauth_setup.go
+scripts/oauth_setup
+oauth_setup
