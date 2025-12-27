@@ -85,6 +85,52 @@ Specialized flow / agent
 
 ---
 
+## Genkit Core Abstractions
+
+В Developer UI каждый action (Flow, Prompt, Generate, Model) имеет 4 секции:
+
+| Секция | Что это | Пример |
+|--------|---------|--------|
+| **Input** | Входные данные для action | `{ message, user_context }` |
+| **Context** | Auth/session контекст (заполняется при Firebase деплое) | `auth`, `app`, `instanceIdToken` |
+| **Output** | Результат выполнения | `{ response }` |
+| **Attributes** | OpenTelemetry span атрибуты | `trace_id`, `span_id`, `genkit.name` |
+
+### Иерархия вызовов
+
+```
+chat (Flow) ─── 1.93s
+│   Input:  ChatInput { message, user_context }
+│   Output: ChatOutput { response }
+│
+└── user_chat (Prompt) ─── 3ms
+    │   Input:  { query, user_context }
+    │   Output: rendered prompt
+    │
+    └── generate (Util) ─── 1.88s
+        │   Input:  prompt + config
+        │   Output: model response
+        │
+        └── ollama/model (Model) ─── 1.87s
+                Input:  messages
+                Output: text
+```
+
+### Context vs UserContext
+
+- **Context** (в UI) — auth контекст при Firebase деплое. Пустой локально!
+- **UserContext** (наш) — данные пользователя из amoCRM, передаются в Input
+
+### Когда Context заполняется?
+
+| Сценарий | Context |
+|----------|---------|
+| Локальный запуск с Ollama | ❌ Пустой |
+| Firebase Cloud Functions (`onCallGenkit`) | ✅ `auth`, `app` |
+| HTTP server с `ContextProvider` | ✅ Custom auth |
+
+---
+
 ## Genkit Agentic Patterns (официальная документация)
 
 Шкала от надёжных Workflow до гибких Agents:
