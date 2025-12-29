@@ -69,9 +69,10 @@ func (h *Handler) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 		// Build user context
 		userCtx := h.ctxBuilder.MustBuild(ctx, telegramUserID)
 
-		// Process with AI
+		// Process with AI (chatID as sessionID for history)
+		sessionID := fmt.Sprintf("tg_%d", chatID)
 		h.debugLog("🤖 Sending to Ollama...")
-		response, err = h.agent.Process(ctx, text, userCtx.ToMap())
+		response, err = h.agent.Process(ctx, sessionID, text, userCtx.ToMap())
 		if err != nil {
 			log.Printf("AI error: %v", err)
 			response = fmt.Sprintf("❌ Ошибка AI: %v", err)

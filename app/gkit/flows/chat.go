@@ -6,10 +6,14 @@ import (
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
+
+	"github.com/tihn/amo-ai-tgbot-go/app/gkit/prompts"
+	"github.com/tihn/amo-ai-tgbot-go/app/gkit/session"
 )
 
 // ChatInput — вход для Chat Flow
 type ChatInput struct {
+	SessionID   string         `json:"session_id"` // Telegram chat ID or unique session identifier
 	Message     string         `json:"message"`
 	UserContext map[string]any `json:"user_context,omitempty"`
 }
@@ -19,30 +23,42 @@ type ChatOutput struct {
 	Response string `json:"response"`
 }
 
-// DefineChatFlow регистрирует Chat Flow и возвращает функцию для его запуска
-func DefineChatFlow(g *genkit.Genkit, model ai.Model, tools []ai.ToolRef) func(context.Context, ChatInput) (ChatOutput, error) {
-	// Получаем prompt из Dotprompt файла
-	chatPrompt := genkit.LookupPrompt(g, "user_chat")
-	if chatPrompt == nil {
-		panic("prompt 'user_chat' not found in prompts directory")
-	}
+// DefineChatFlow регистрирует Chat Flow с поддержкой истории и возвращает функцию для его запуска
+func DefineChatFlow(
+	g *genkit.Genkit,
+	model ai.Model,
+	tools []ai.ToolRef,
+	store session.Store,
+) func(context.Context, ChatInput) (ChatOutput, error) {
 
 	flow := genkit.DefineFlow(g, "chat",
 		func(ctx context.Context, input ChatInput) (ChatOutput, error) {
-			// Передаём всё в prompt как есть
-			promptInput := map[string]any{
-				"query":        input.Message,
-				"user_context": input.UserContext,
+			// 1. Загружаем историю сессии
+			history := store.Load(input.SessionID)
+
+			// 2. Если история пустая — добавляем системный prompt
+			if len(history) == 0 {
+				cfg := prompts.ExtractPromptConfig(input.UserContext)
+				systemPrompt := prompts.BuildSystemPrompt(cfg)
+				history = append(history, ai.NewSystemMessage(ai.NewTextPart(systemPrompt)))
 			}
 
-			resp, err := chatPrompt.Execute(ctx,
+			// 3. Добавляем новое сообщение пользователя
+			history = append(history, ai.NewUserMessage(ai.NewTextPart(input.Message)))
+
+			// 4. Генерируем ответ с полной историей
+			resp, err := genkit.Generate(ctx, g,
 				ai.WithModelName(model.Name()),
-				ai.WithInput(promptInput),
+				ai.WithMessages(history...),
 				ai.WithTools(tools...),
 			)
 			if err != nil {
-				return ChatOutput{}, fmt.Errorf("prompt execute: %w", err)
+				return ChatOutput{}, fmt.Errorf("generate: %w", err)
 			}
+
+			// 5. Сохраняем обновлённую историю (включает tool calls и responses)
+			store.Save(input.SessionID, resp.History())
+
 			return ChatOutput{Response: resp.Text()}, nil
 		},
 	)

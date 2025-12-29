@@ -8,6 +8,7 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/flows"
+	"github.com/tihn/amo-ai-tgbot-go/app/gkit/session"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/tools"
 	genkitClient "github.com/tihn/amo-ai-tgbot-go/infrastructure/genkit"
 )
@@ -24,11 +25,14 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 	g := client.G
 	model := client.Model
 
+	// Создаём session store для истории диалогов
+	store := session.NewMemoryStore()
+
 	// Регистрируем все tools (видны в Genkit UI)
 	registry := tools.NewRegistry(g, sdk).RegisterAll()
 
-	// Регистрируем Chat Flow с tools
-	chatRunner := flows.DefineChatFlow(g, model, registry.AllTools())
+	// Регистрируем Chat Flow с tools и session store
+	chatRunner := flows.DefineChatFlow(g, model, registry.AllTools(), store)
 
 	return &Agent{
 		g:        g,
@@ -38,8 +42,10 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 }
 
 // Process processes a user message using the chat flow with user context
-func (a *Agent) Process(ctx context.Context, message string, userContext map[string]any) (string, error) {
+// sessionID should be unique per conversation (e.g., Telegram chat ID)
+func (a *Agent) Process(ctx context.Context, sessionID, message string, userContext map[string]any) (string, error) {
 	output, err := a.chatFlow(ctx, flows.ChatInput{
+		SessionID:   sessionID,
 		Message:     message,
 		UserContext: userContext,
 	})
