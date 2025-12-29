@@ -27,14 +27,7 @@ func NewRegistry(g *genkit.Genkit, sdk *amocrm.SDK) *Registry {
 
 // RegisterAll registers all CRM tools and returns the registry.
 func (r *Registry) RegisterAll() *Registry {
-	r.registerLeadsTools()
-	r.registerContactsTools()
-	r.registerCompaniesTools()
-	r.registerCustomersTools()
 	r.registerReferencesTool()
-	r.registerLinksTool()
-	r.registerTasksTools()
-	r.registerNotesTools()
 	return r
 }
 
