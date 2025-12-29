@@ -13,7 +13,13 @@ func InitOllama(g *genkit.Genkit, plugin *ollama.Ollama, cfg *config.Config) ai.
 	model := plugin.DefineModel(g, ollama.ModelDefinition{
 		Name: cfg.OllamaModel,
 		Type: "chat",
-	}, nil)
+	}, &ai.ModelOptions{
+		Supports: &ai.ModelSupports{
+			Multiturn:  true,
+			SystemRole: true,
+			Tools:      true,
+		},
+	})
 
 	return model
 }
