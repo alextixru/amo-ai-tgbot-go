@@ -16,21 +16,23 @@ User Message → Router Flow → Specialized Flow → CRM Tools → amoCRM SDK
 - `general` — общие вопросы (без CRM операций)
 
 ### Specialized Flows
-Каждый flow получает свой набор tools:
+Каждый flow получает tools в зависимости от режима (Mode):
 
-| Flow | Tools |
+| Mode | Tools |
 |------|-------|
-| `leads_flow` | getLeads, createLead, updateLead |
-| `contacts_flow` | getContacts, createContact |
-| `tasks_flow` | getTasks, createTask |
+| **Work** | entities, activities, complex_create, products, catalogs, files, unsorted |
+| **Admin** | admin_schema, admin_pipelines, admin_users, admin_integrations |
+| **Retention** | customers |
+
+> См. полную схему: [tools/tools_schema.md](tools/tools_schema.md)
 
 ## План реализации
 
 1. [x] Базовый Chat Flow (работает)
-2. [ ] Router Flow — классификация intent
-3. [ ] Подключение Router → Chat Flow
-4. [ ] Leads Flow + tools
-5. [ ] Contacts Flow + tools
+2. [ ] Tools Layer — 12 unified tools
+3. [ ] Router Flow — классификация intent + режим
+4. [ ] Mode Flows — Reader/Sales/Manager/Admin
+5. [ ] Specialized Flows — AnalyzeLead, CreateLeadWizard, etc.
 
 ## Принципы
 

@@ -5,6 +5,36 @@
 
 ---
 
+## Implementation Pattern
+
+**Unified Input + Switch по Action**
+
+Каждый tool использует единую input-структуру с опциональными полями (`omitempty`). 
+Genkit автоматически генерирует JSON Schema из Go struct. LLM передаёт только нужные поля.
+
+```go
+type ToolInput struct {
+    Action     string         `json:"action"`              // обязательное
+    EntityType string         `json:"entity_type,omitempty"`
+    ID         int            `json:"id,omitempty"`
+    Filter     map[string]any `json:"filter,omitempty"`
+    Data       map[string]any `json:"data,omitempty"`
+}
+
+// Handler:
+switch input.Action {
+case "get":
+    if input.ID == 0 {
+        return nil, fmt.Errorf("id required for 'get'")
+    }
+    // ...
+}
+```
+
+> **Важно:** Genkit не делает conditional validation. Проверка обязательности полей в зависимости от action — в коде handler'а.
+
+---
+
 ## Reference Context
 
 > Справочники НЕ являются отдельными Tools.
@@ -54,6 +84,17 @@
 **Services:** Tasks, Notes, Calls, Events, EntityFiles, Links, Tags, EntitySubscriptions, Talks
 
 **Actions:** list, get, create, update, delete, complete, link, unlink, subscribe, unsubscribe, close
+
+> **Layer-specific actions:**
+> - `tasks`: list, get, create, update, complete
+> - `notes`: list, get, create, update
+> - `calls`: create (write-only, нет чтения через SDK)
+> - `events`: list, get (read-only)
+> - `files`: list, link, unlink
+> - `links`: list, link, unlink
+> - `tags`: list, create, link, unlink (delete не поддерживается API)
+> - `subscriptions`: list, subscribe, unsubscribe
+> - `talks`: list, close
 
 ```json
 {
@@ -267,6 +308,9 @@
 **Services:** CustomersService, CustomerBonusPointsService, CustomerStatusesService, CustomerTransactionsService, SegmentsService
 
 **Actions:** search, get, create, update, delete, link, earn_points, redeem_points
+
+> **Layer-specific limitations:**
+> - `segments`: только search, get, create, delete (update не поддерживается API)
 
 ```json
 {

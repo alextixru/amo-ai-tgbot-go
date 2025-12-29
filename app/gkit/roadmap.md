@@ -224,100 +224,52 @@ app/gkit/prompts/
 
 ## Layer 5: Tools
 
-**Цель:** Обернуть все методы SDK в Genkit Tools
+**Цель:** 12 unified tools покрывающих весь SDK
 
-### Структура
+> Детальная схема: [tools/tools_schema.md](tools/tools_schema.md)
+
+### Архитектура
 
 ```
 app/gkit/tools/
-├── tools.go              # Registry всех tools
-├── leads.go              # Leads tools
-├── contacts.go           # Contacts tools
-├── companies.go          # Companies tools
-├── tasks.go              # Tasks tools
-├── notes.go              # Notes tools
-├── pipelines.go          # Pipelines tools
-├── users.go              # Users tools
-├── analytics.go          # Events, Calls tools
-└── admin.go              # Admin tools (CustomFields, Roles)
+├── tools.go              # Registry
+├── entities.go           # leads, contacts, companies
+├── activities.go         # tasks, notes, calls, events, files, links, tags, subscriptions, talks
+├── complex_create.go     # создание сделки с контактами
+├── products.go           # товары + привязка к сущностям
+├── catalogs.go           # справочники (каталоги)
+├── files.go              # файловое хранилище
+├── unsorted.go           # неразобранное
+├── admin_schema.go       # кастомные поля, источники
+├── admin_pipelines.go    # воронки и статусы
+├── admin_users.go        # пользователи и роли
+├── admin_integrations.go # вебхуки, виджеты
+└── customers.go          # retention (покупатели)
 ```
 
-### Tools по категориям
+### Tools по режимам
 
-#### Core CRUD
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `searchLeads` | `Leads().Get(filter)` | query, limit | `[]Lead` |
-| `getLead` | `Leads().GetByID(id)` | leadID | `Lead` |
-| `createLead` | `Leads().CreateOne(lead)` | name, price, pipelineID | `Lead` |
-| `updateLead` | `Leads().UpdateOne(lead)` | leadID, updates | `Lead` |
-| `searchContacts` | `Contacts().Get(filter)` | query, limit | `[]Contact` |
-| `getContact` | `Contacts().GetByID(id)` | contactID | `Contact` |
-| `createContact` | `Contacts().CreateOne()` | name, phone, email | `Contact` |
-| `searchCompanies` | `Companies().Get(filter)` | query | `[]Company` |
-| `createCompany` | `Companies().CreateOne()` | name | `Company` |
-
-#### Tasks
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `getMyTasks` | `Tasks().Get(filter)` | - | `[]Task` |
-| `getTasksByEntity` | `Tasks().GetByEntity()` | entityType, entityID | `[]Task` |
-| `createTask` | `Tasks().CreateOne()` | text, dueDate, entityID | `Task` |
-| `completeTask` | `Tasks().UpdateOne()` | taskID | `Task` |
-
-#### Notes & History
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `getNotes` | `Notes().GetByEntity()` | entityType, entityID | `[]Note` |
-| `createNote` | `Notes().CreateOne()` | entityType, entityID, text | `Note` |
-| `getCalls` | `Calls().Get()` | entityID | `[]Call` |
-| `getEvents` | `Events().Get()` | filter | `[]Event` |
-
-#### Structure (Read)
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `getPipelines` | `Pipelines().Get()` | - | `[]Pipeline` |
-| `getStatuses` | `Pipelines().GetStatuses()` | pipelineID | `[]Status` |
-| `getUsers` | `Users().Get()` | - | `[]User` |
-| `getTags` | `Tags().Get()` | entityType | `[]Tag` |
-| `getCustomFields` | `CustomFields().Get()` | entityType | `[]CustomField` |
-| `getAccountInfo` | `Account().Get()` | - | `Account` |
-
-#### Structure (Admin)
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `createPipeline` | `Pipelines().CreateOne()` | name, statuses | `Pipeline` |
-| `updatePipeline` | `Pipelines().UpdateOne()` | pipelineID, updates | `Pipeline` |
-| `createCustomField` | `CustomFields().CreateOne()` | entityType, field | `CustomField` |
-| `createRole` | `Roles().CreateOne()` | name, rights | `Role` |
-
-#### Links
-
-| Tool | SDK Method | Input | Output |
-|------|------------|-------|--------|
-| `getLinkedContacts` | `Links().Get()` | entityType, entityID | `[]Contact` |
-| `linkEntities` | `Links().Link()` | from, to | `bool` |
-
-**Итого: ~35-40 tools**
+| Mode | Tools | Описание |
+|------|-------|----------|
+| **Work** | entities, activities, complex_create, products, catalogs, files, unsorted | Основная работа |
+| **Admin** | admin_schema, admin_pipelines, admin_users, admin_integrations | Администрирование |
+| **Retention** | customers | Покупатели |
 
 ### Чеклист Layer 5
 
-- [ ] `leads.go` — 4 tools
-- [ ] `contacts.go` — 4 tools
-- [ ] `companies.go` — 3 tools
-- [ ] `tasks.go` — 4 tools
-- [ ] `notes.go` — 2 tools
-- [ ] `pipelines.go` — 4 tools
-- [ ] `users.go` — 2 tools
-- [ ] `analytics.go` — 3 tools
-- [ ] `links.go` — 2 tools
-- [ ] `admin.go` — 4 tools
 - [ ] `tools.go` — registry
+- [ ] `entities.go` — leads, contacts, companies (3 сервиса)
+- [ ] `activities.go` — tasks, notes, calls и др. (9 сервисов)
+- [ ] `complex_create.go` — AddComplex
+- [ ] `products.go` — ProductsService + привязка
+- [ ] `catalogs.go` — CatalogsService, CatalogElementsService
+- [ ] `files.go` — FilesService
+- [ ] `unsorted.go` — UnsortedService
+- [ ] `admin_schema.go` — CustomFields, LossReasons, Sources
+- [ ] `admin_pipelines.go` — PipelinesService
+- [ ] `admin_users.go` — UsersService, RolesService
+- [ ] `admin_integrations.go` — Webhooks, Widgets, etc.
+- [ ] `customers.go` — Customers, BonusPoints, Segments
 
 ---
 

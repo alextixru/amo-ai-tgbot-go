@@ -26,8 +26,9 @@ func NewRegistry(g *genkit.Genkit, sdk *amocrm.SDK) *Registry {
 }
 
 // RegisterAll registers all CRM tools and returns the registry.
+// TODO: Register 12 unified tools (entities, activities, complex_create, etc.)
 func (r *Registry) RegisterAll() *Registry {
-	r.registerReferencesTool()
+	r.registerEntitiesTool()
 	return r
 }
 
