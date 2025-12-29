@@ -13,7 +13,7 @@ import (
 type Registry struct {
 	g     *genkit.Genkit
 	sdk   *amocrm.SDK
-	tools []ai.Tool
+	tools []ai.ToolRef
 }
 
 // NewRegistry creates a new tool registry.
@@ -21,7 +21,7 @@ func NewRegistry(g *genkit.Genkit, sdk *amocrm.SDK) *Registry {
 	return &Registry{
 		g:     g,
 		sdk:   sdk,
-		tools: make([]ai.Tool, 0),
+		tools: make([]ai.ToolRef, 0),
 	}
 }
 
@@ -44,7 +44,7 @@ func (r *Registry) RegisterAll() *Registry {
 }
 
 // AllTools returns all registered tools for use with ai.WithTools().
-func (r *Registry) AllTools() []ai.Tool {
+func (r *Registry) AllTools() []ai.ToolRef {
 	return r.tools
 }
 

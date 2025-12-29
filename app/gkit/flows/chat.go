@@ -20,7 +20,7 @@ type ChatOutput struct {
 }
 
 // DefineChatFlow регистрирует Chat Flow и возвращает функцию для его запуска
-func DefineChatFlow(g *genkit.Genkit, model ai.Model) func(context.Context, ChatInput) (ChatOutput, error) {
+func DefineChatFlow(g *genkit.Genkit, model ai.Model, tools []ai.ToolRef) func(context.Context, ChatInput) (ChatOutput, error) {
 	// Получаем prompt из Dotprompt файла
 	chatPrompt := genkit.LookupPrompt(g, "user_chat")
 	if chatPrompt == nil {
@@ -38,6 +38,7 @@ func DefineChatFlow(g *genkit.Genkit, model ai.Model) func(context.Context, Chat
 			resp, err := chatPrompt.Execute(ctx,
 				ai.WithModelName(model.Name()),
 				ai.WithInput(promptInput),
+				ai.WithTools(tools...),
 			)
 			if err != nil {
 				return ChatOutput{}, fmt.Errorf("prompt execute: %w", err)

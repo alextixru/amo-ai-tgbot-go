@@ -3,10 +3,12 @@ package gkit
 import (
 	"context"
 
+	amocrm "github.com/alextixru/amocrm-sdk-go"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/flows"
+	"github.com/tihn/amo-ai-tgbot-go/app/gkit/tools"
 	genkitClient "github.com/tihn/amo-ai-tgbot-go/infrastructure/genkit"
 )
 
@@ -17,13 +19,16 @@ type Agent struct {
 	chatFlow func(context.Context, flows.ChatInput) (flows.ChatOutput, error)
 }
 
-// NewAgent creates a new AI agent with registered flows
-func NewAgent(client *genkitClient.Client) *Agent {
+// NewAgent creates a new AI agent with registered flows and tools
+func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 	g := client.G
 	model := client.Model
 
-	// Регистрируем Chat Flow (виден в Genkit UI)
-	chatRunner := flows.DefineChatFlow(g, model)
+	// Регистрируем все tools (видны в Genkit UI)
+	registry := tools.NewRegistry(g, sdk).RegisterAll()
+
+	// Регистрируем Chat Flow с tools
+	chatRunner := flows.DefineChatFlow(g, model, registry.AllTools())
 
 	return &Agent{
 		g:        g,
