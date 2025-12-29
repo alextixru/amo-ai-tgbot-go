@@ -29,6 +29,17 @@ func NewRegistry(g *genkit.Genkit, sdk *amocrm.SDK) *Registry {
 // TODO: Register 12 unified tools (entities, activities, complex_create, etc.)
 func (r *Registry) RegisterAll() *Registry {
 	r.registerEntitiesTool()
+	r.registerActivitiesTool()
+	r.registerComplexCreateTool()
+	r.registerProductsTool()
+	r.registerCatalogsTool()
+	r.registerFilesTool()
+	r.registerUnsortedTool()
+	r.registerCustomersTool()
+	r.registerAdminSchemaTool()
+	r.registerAdminPipelinesTool()
+	r.registerAdminUsersTool()
+	r.registerAdminIntegrationsTool()
 	return r
 }
 
