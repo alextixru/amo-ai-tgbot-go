@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -66,7 +66,7 @@ func (r *Registry) handleAdminUsers(ctx context.Context, input AdminUsersInput) 
 
 func (r *Registry) handleUsers(ctx context.Context, input AdminUsersInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listUsers(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
@@ -83,24 +83,24 @@ func (r *Registry) handleUsers(ctx context.Context, input AdminUsersInput) (any,
 	}
 }
 
-func (r *Registry) listUsers(ctx context.Context, filter *AdminUsersFilter) ([]models.User, error) {
-	f := &services.UsersFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) listUsers(ctx context.Context, filter *AdminUsersFilter) ([]*models.User, error) {
+	f := filters.NewUsersFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 	}
-	return r.sdk.Users().Get(ctx, f)
+	users, _, err := r.sdk.Users().Get(ctx, f)
+	return users, err
 }
 
-func (r *Registry) createUser(ctx context.Context, data map[string]any) ([]models.User, error) {
-	user := models.User{}
+func (r *Registry) createUser(ctx context.Context, data map[string]any) ([]*models.User, error) {
+	user := &models.User{}
 
 	if name, ok := data["name"].(string); ok {
 		user.Name = name
@@ -109,7 +109,8 @@ func (r *Registry) createUser(ctx context.Context, data map[string]any) ([]model
 		user.Email = email
 	}
 
-	return r.sdk.Users().Create(ctx, []models.User{user})
+	users, _, err := r.sdk.Users().Create(ctx, []*models.User{user})
+	return users, err
 }
 
 // ============================================================================
@@ -118,7 +119,7 @@ func (r *Registry) createUser(ctx context.Context, data map[string]any) ([]model
 
 func (r *Registry) handleRoles(ctx context.Context, input AdminUsersInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listRoles(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
@@ -152,38 +153,30 @@ func (r *Registry) handleRoles(ctx context.Context, input AdminUsersInput) (any,
 	}
 }
 
-func (r *Registry) listRoles(ctx context.Context, filter *AdminUsersFilter) ([]models.Role, error) {
-	f := &services.RoleFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.Roles().Get(ctx, f)
+func (r *Registry) listRoles(ctx context.Context, filter *AdminUsersFilter) ([]*models.Role, error) {
+	// RolesService наследует BaseEntityService, Get принимает url.Values
+	roles, _, err := r.sdk.Roles().Get(ctx, nil)
+	return roles, err
 }
 
-func (r *Registry) createRole(ctx context.Context, data map[string]any) ([]models.Role, error) {
-	role := models.Role{}
+func (r *Registry) createRole(ctx context.Context, data map[string]any) ([]*models.Role, error) {
+	role := &models.Role{}
 
 	if name, ok := data["name"].(string); ok {
 		role.Name = name
 	}
 
-	return r.sdk.Roles().Create(ctx, []models.Role{role})
+	roles, _, err := r.sdk.Roles().Create(ctx, []*models.Role{role})
+	return roles, err
 }
 
-func (r *Registry) updateRole(ctx context.Context, id int, data map[string]any) ([]models.Role, error) {
-	role := models.Role{ID: id}
+func (r *Registry) updateRole(ctx context.Context, id int, data map[string]any) ([]*models.Role, error) {
+	role := &models.Role{ID: id}
 
 	if name, ok := data["name"].(string); ok {
 		role.Name = name
 	}
 
-	return r.sdk.Roles().Update(ctx, []models.Role{role})
+	roles, _, err := r.sdk.Roles().Update(ctx, []*models.Role{role})
+	return roles, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
@@ -55,18 +56,18 @@ func (r *Registry) registerFilesTool() {
 
 func (r *Registry) handleFiles(ctx context.Context, input FilesInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listFiles(ctx, input.Filter)
 	case "get":
 		if input.UUID == "" {
 			return nil, fmt.Errorf("uuid is required for action 'get'")
 		}
-		return r.sdk.Files().GetOne(ctx, input.UUID)
+		return r.sdk.Files().GetOneByUUID(ctx, input.UUID)
 	case "delete":
 		if input.UUID == "" {
 			return nil, fmt.Errorf("uuid is required for action 'delete'")
 		}
-		err := r.sdk.Files().Delete(ctx, input.UUID)
+		err := r.sdk.Files().DeleteOne(ctx, input.UUID)
 		if err != nil {
 			return nil, err
 		}
@@ -81,23 +82,23 @@ func (r *Registry) handleFiles(ctx context.Context, input FilesInput) (any, erro
 	}
 }
 
-func (r *Registry) listFiles(ctx context.Context, filter *FileFilter) ([]models.File, error) {
-	f := &services.FilesFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) listFiles(ctx context.Context, filter *FileFilter) ([]*models.File, error) {
+	f := filters.NewFilesFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if len(filter.UUIDs) > 0 {
-			f.IDs = filter.UUIDs
+			f.SetUUID(filter.UUIDs)
 		}
 	}
-	return r.sdk.Files().Get(ctx, f)
+	items, _, err := r.sdk.Files().Get(ctx, f)
+	return items, err
 }
 
 func (r *Registry) uploadFile(ctx context.Context, params *FileUploadParams) (*models.File, error) {

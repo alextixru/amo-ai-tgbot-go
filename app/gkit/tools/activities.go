@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/collections"
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
@@ -12,8 +14,8 @@ import (
 
 // ActivitiesInput входные параметры для инструмента activities
 type ActivitiesInput struct {
-	// Parent родительская сущность
-	Parent ParentEntity `json:"parent" jsonschema_description:"Родительская сущность: {type, id}"`
+	// Parent родительская сущность (ОБЯЗАТЕЛЬНО для всех действий кроме list без фильтра)
+	Parent ParentEntity `json:"parent" jsonschema_description:"Родительская сущность, к которой привязана активность. ОБЯЗАТЕЛЬНО: {type: 'leads'|'contacts'|'companies', id: number}"`
 
 	// Layer тип активности: tasks, notes, calls, events, files, links, tags, subscriptions, talks
 	Layer string `json:"layer" jsonschema_description:"Тип: tasks, notes, calls, events, files, links, tags, subscriptions, talks"`
@@ -60,7 +62,9 @@ type ActivityData struct {
 	// Task fields
 	Text              string `json:"text,omitempty" jsonschema_description:"Текст задачи/примечания"`
 	CompleteTillAt    int64  `json:"complete_till_at,omitempty" jsonschema_description:"Срок задачи (unix timestamp)"`
+	CompleteTill      int64  `json:"complete_till,omitempty" jsonschema_description:"Алиас для complete_till_at"`
 	TaskTypeID        int    `json:"task_type_id,omitempty" jsonschema_description:"ID типа задачи"`
+	TaskType          int    `json:"task_type,omitempty" jsonschema_description:"Алиас для task_type_id"`
 	ResponsibleUserID int    `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственного"`
 
 	// Note fields
@@ -130,10 +134,11 @@ func (r *Registry) handleActivities(ctx context.Context, input ActivitiesInput) 
 func (r *Registry) handleTasks(ctx context.Context, input ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.sdk.Tasks().Get(ctx, &services.TasksFilter{
-			Limit: 50,
-			Page:  1,
-		})
+		f := filters.NewTasksFilter()
+		f.SetLimit(50)
+		f.SetPage(1)
+		tasks, _, err := r.sdk.Tasks().Get(ctx, f)
+		return tasks, err
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
@@ -143,21 +148,32 @@ func (r *Registry) handleTasks(ctx context.Context, input ActivitiesInput) (any,
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
 		}
-		task := models.Task{
+		task := &models.Task{
 			Text:       input.Data.Text,
 			EntityID:   input.Parent.ID,
 			EntityType: input.Parent.Type,
 		}
 		if input.Data.CompleteTillAt > 0 {
 			task.CompleteTill = &input.Data.CompleteTillAt
+		} else if input.Data.CompleteTill > 0 {
+			task.CompleteTill = &input.Data.CompleteTill
 		}
 		if input.Data.TaskTypeID > 0 {
 			task.TaskTypeID = input.Data.TaskTypeID
+		} else if input.Data.TaskType > 0 {
+			task.TaskTypeID = input.Data.TaskType
 		}
 		if input.Data.ResponsibleUserID > 0 {
 			task.ResponsibleUserID = input.Data.ResponsibleUserID
 		}
-		return r.sdk.Tasks().Create(ctx, []models.Task{task})
+		tasks, _, err := r.sdk.Tasks().Create(ctx, []*models.Task{task})
+		if err != nil {
+			return nil, err
+		}
+		if len(tasks) > 0 {
+			return tasks[0], nil
+		}
+		return nil, nil
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
@@ -165,7 +181,7 @@ func (r *Registry) handleTasks(ctx context.Context, input ActivitiesInput) (any,
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'update'")
 		}
-		task := models.Task{
+		task := &models.Task{
 			BaseModel: models.BaseModel{ID: input.ID},
 		}
 		if input.Data.Text != "" {
@@ -173,8 +189,17 @@ func (r *Registry) handleTasks(ctx context.Context, input ActivitiesInput) (any,
 		}
 		if input.Data.CompleteTillAt > 0 {
 			task.CompleteTill = &input.Data.CompleteTillAt
+		} else if input.Data.CompleteTill > 0 {
+			task.CompleteTill = &input.Data.CompleteTill
 		}
-		return r.sdk.Tasks().Update(ctx, []models.Task{task})
+		tasks, _, err := r.sdk.Tasks().Update(ctx, []*models.Task{task})
+		if err != nil {
+			return nil, err
+		}
+		if len(tasks) > 0 {
+			return tasks[0], nil
+		}
+		return nil, nil
 	case "complete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'complete'")
@@ -190,20 +215,21 @@ func (r *Registry) handleTasks(ctx context.Context, input ActivitiesInput) (any,
 func (r *Registry) handleNotes(ctx context.Context, input ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.sdk.Notes().GetByParent(ctx, input.Parent.Type, input.Parent.ID, &services.NotesFilter{
-			Limit: 50,
-			Page:  1,
-		})
+		f := filters.NewNotesFilter()
+		f.SetLimit(50)
+		f.SetPage(1)
+		notes, _, err := r.sdk.Notes().GetByParent(ctx, input.Parent.Type, input.Parent.ID, f)
+		return notes, err
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.sdk.Notes().GetOne(ctx, input.Parent.Type, input.ID)
+		return r.sdk.Notes().GetOne(ctx, input.Parent.Type, input.ID, nil)
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
 		}
-		note := models.Note{
+		note := &models.Note{
 			EntityID: input.Parent.ID,
 			Params: &models.NoteParams{
 				Text: input.Data.Text,
@@ -214,7 +240,14 @@ func (r *Registry) handleNotes(ctx context.Context, input ActivitiesInput) (any,
 		} else {
 			note.NoteType = models.NoteTypeCommon
 		}
-		return r.sdk.Notes().Create(ctx, input.Parent.Type, []models.Note{note})
+		notes, _, err := r.sdk.Notes().Create(ctx, input.Parent.Type, []*models.Note{note})
+		if err != nil {
+			return nil, err
+		}
+		if len(notes) > 0 {
+			return notes[0], nil
+		}
+		return nil, nil
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
@@ -222,13 +255,20 @@ func (r *Registry) handleNotes(ctx context.Context, input ActivitiesInput) (any,
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'update'")
 		}
-		note := models.Note{
+		note := &models.Note{
 			BaseModel: models.BaseModel{ID: input.ID},
 			Params: &models.NoteParams{
 				Text: input.Data.Text,
 			},
 		}
-		return r.sdk.Notes().Update(ctx, input.Parent.Type, []models.Note{note})
+		notes, _, err := r.sdk.Notes().Update(ctx, input.Parent.Type, []*models.Note{note})
+		if err != nil {
+			return nil, err
+		}
+		if len(notes) > 0 {
+			return notes[0], nil
+		}
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("unknown action for notes: %s", input.Action)
 	}
@@ -260,7 +300,7 @@ func (r *Registry) handleCalls(ctx context.Context, input ActivitiesInput) (any,
 		if input.Data.Link != "" {
 			call.Link = input.Data.Link
 		}
-		return r.sdk.Calls().AddOne(ctx, &call)
+		return r.sdk.Calls().CreateOne(ctx, &call)
 	default:
 		return nil, fmt.Errorf("calls only supports 'create' action (write-only API)")
 	}
@@ -271,12 +311,13 @@ func (r *Registry) handleCalls(ctx context.Context, input ActivitiesInput) (any,
 func (r *Registry) handleEvents(ctx context.Context, input ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.sdk.Events().Get(ctx, &services.EventsFilter{
-			Limit:            50,
-			Page:             1,
-			FilterByEntity:   []string{input.Parent.Type},
-			FilterByEntityID: []int{input.Parent.ID},
-		})
+		f := filters.NewEventsFilter()
+		f.SetLimit(50)
+		f.SetPage(1)
+		f.SetEntity([]string{input.Parent.Type})
+		f.SetEntityIDs([]int{input.Parent.ID})
+		events, _, err := r.sdk.Events().Get(ctx, f.ToQueryParams())
+		return events, err
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
@@ -294,12 +335,14 @@ func (r *Registry) handleEntityFiles(ctx context.Context, input ActivitiesInput)
 
 	switch input.Action {
 	case "list":
-		return svc.Get(ctx, 1, 50)
+		files, _, err := svc.Get(ctx, 1, 50)
+		return files, err
 	case "link":
 		if len(input.FileUUIDs) == 0 {
 			return nil, fmt.Errorf("file_uuids is required for action 'link'")
 		}
-		return svc.Link(ctx, input.FileUUIDs)
+		files, _, err := svc.Link(ctx, input.FileUUIDs)
+		return files, err
 	case "unlink":
 		if input.FileUUID == "" {
 			return nil, fmt.Errorf("file_uuid is required for action 'unlink'")
@@ -320,20 +363,22 @@ func (r *Registry) handleLinks(ctx context.Context, input ActivitiesInput) (any,
 		if input.LinkTo == nil {
 			return nil, fmt.Errorf("link_to is required for action 'link'")
 		}
-		link := models.EntityLink{
+		link := &models.EntityLink{
 			ToEntityID:   input.LinkTo.ID,
 			ToEntityType: input.LinkTo.Type,
 		}
-		return r.sdk.Links().Link(ctx, input.Parent.Type, input.Parent.ID, []models.EntityLink{link})
+		coll := collections.NewLinksCollection(link)
+		return r.sdk.Links().Link(ctx, input.Parent.Type, input.Parent.ID, coll)
 	case "unlink":
 		if input.LinkTo == nil {
 			return nil, fmt.Errorf("link_to is required for action 'unlink'")
 		}
-		link := models.EntityLink{
+		link := &models.EntityLink{
 			ToEntityID:   input.LinkTo.ID,
 			ToEntityType: input.LinkTo.Type,
 		}
-		return nil, r.sdk.Links().Unlink(ctx, input.Parent.Type, input.Parent.ID, []models.EntityLink{link})
+		coll := collections.NewLinksCollection(link)
+		return nil, r.sdk.Links().Unlink(ctx, input.Parent.Type, input.Parent.ID, coll)
 	default:
 		return nil, fmt.Errorf("unknown action for links: %s", input.Action)
 	}
@@ -344,20 +389,38 @@ func (r *Registry) handleLinks(ctx context.Context, input ActivitiesInput) (any,
 func (r *Registry) handleTags(ctx context.Context, input ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.sdk.Tags().Get(ctx, input.Parent.Type, &services.TagsFilter{
-			Limit: 50,
-			Page:  1,
-		})
+		f := filters.NewTagsFilter()
+		f.SetLimit(50)
+		f.SetPage(1)
+		tags, _, err := r.sdk.Tags().Get(ctx, input.Parent.Type, f)
+		return tags, err
 	case "create":
 		if input.Data == nil || input.Data.TagName == "" {
 			return nil, fmt.Errorf("data.tag_name is required for action 'create'")
 		}
-		tag := models.Tag{
+		tag := &models.Tag{
 			Name: input.Data.TagName,
 		}
-		return r.sdk.Tags().Create(ctx, input.Parent.Type, []models.Tag{tag})
+		tags, _, err := r.sdk.Tags().Create(ctx, input.Parent.Type, []*models.Tag{tag})
+		if err != nil {
+			return nil, err
+		}
+		if len(tags) > 0 {
+			return tags[0], nil
+		}
+		return nil, nil
+	case "delete":
+		if input.Data == nil || input.Data.TagID == 0 {
+			return nil, fmt.Errorf("data.tag_id is required for action 'delete'")
+		}
+		tag := &models.Tag{ID: input.Data.TagID}
+		err := r.sdk.Tags().Delete(ctx, input.Parent.Type, []*models.Tag{tag})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"success": true, "deleted_tag_id": input.Data.TagID}, nil
 	default:
-		return nil, fmt.Errorf("tags supports 'list' and 'create' actions (delete via entity update)")
+		return nil, fmt.Errorf("tags supports 'list', 'create', and 'delete' actions")
 	}
 }
 
@@ -389,17 +452,17 @@ func (r *Registry) handleSubscriptions(ctx context.Context, input ActivitiesInpu
 func (r *Registry) handleTalks(ctx context.Context, input ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.sdk.Talks().Get(ctx, &services.TalksFilter{
-			Limit:      50,
-			Page:       1,
-			EntityType: input.Parent.Type,
-			EntityID:   input.Parent.ID,
-		})
+		params := map[string]string{
+			"limit":       "50",
+			"page":        "1",
+			"entity_type": input.Parent.Type,
+		}
+		return r.sdk.Talks().Get(ctx, params)
 	case "close":
 		if input.TalkID == "" {
 			return nil, fmt.Errorf("talk_id is required for action 'close'")
 		}
-		return nil, r.sdk.Talks().Close(ctx, input.TalkID)
+		return nil, r.sdk.Talks().Close(ctx, input.TalkID, nil)
 	default:
 		return nil, fmt.Errorf("unknown action for talks: %s", input.Action)
 	}

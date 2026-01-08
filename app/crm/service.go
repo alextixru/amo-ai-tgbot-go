@@ -46,7 +46,7 @@ func (s *Service) GetAccountInfo(ctx context.Context) (string, error) {
 
 // GetPipelines returns pipelines with statuses as formatted string
 func (s *Service) GetPipelines(ctx context.Context) (string, error) {
-	pipelines, err := s.client.SDK().Pipelines().Get(ctx)
+	pipelines, _, err := s.client.SDK().Pipelines().Get(ctx, nil)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +60,7 @@ func (s *Service) GetPipelines(ctx context.Context) (string, error) {
 		result += fmt.Sprintf("📊 %s (ID: %d)\n", p.Name, p.ID)
 
 		// Get statuses for this pipeline
-		statuses, err := s.client.SDK().Pipelines().GetStatuses(ctx, p.ID)
+		statuses, _, err := s.client.SDK().Statuses(p.ID).Get(ctx, nil)
 		if err != nil {
 			result += fmt.Sprintf("   ⚠️ Ошибка загрузки статусов: %v\n", err)
 			continue

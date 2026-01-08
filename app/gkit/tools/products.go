@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -47,7 +46,9 @@ func (r *Registry) registerProductsTool() {
 		r.g,
 		"products",
 		"Работа с товарами amoCRM (каталог ID=1). "+
-			"Поддерживает: search (поиск), get (получение по ID), create (создание), update (обновление), delete (удаление).",
+			"⚠️ ВНИМАНИЕ: ProductsService.Get/Create/Update возвращают ErrNotAvailableForAction согласно API. "+
+			"Для работы с товарами используйте 'catalogs' tool с catalog_id товарного каталога вместо этого tool. "+
+			"Поддерживает: search (поиск, может не работать), get (получение по ID), create/update (недоступны), delete (удаление).",
 		func(ctx *ai.ToolContext, input ProductsInput) (any, error) {
 			return r.handleProducts(ctx.Context, input)
 		},
@@ -59,66 +60,26 @@ func (r *Registry) handleProducts(ctx context.Context, input ProductsInput) (any
 	case "search":
 		return r.searchProducts(ctx, input.Filter)
 	case "get":
-		if input.ProductID == 0 {
-			return nil, fmt.Errorf("product_id is required for action 'get'")
-		}
-		return r.sdk.Products().GetOne(ctx, input.ProductID)
+		return nil, fmt.Errorf("ProductsService.GetOne is not available. Please use 'catalogs' tool with your products catalog ID")
 	case "create":
-		if input.Data == nil || input.Data.Name == "" {
-			return nil, fmt.Errorf("data.name is required for action 'create'")
-		}
-		return r.createProduct(ctx, input.Data)
+		return nil, fmt.Errorf("ProductsService.Create is not available. Please use 'catalogs' tool with your products catalog ID")
 	case "update":
-		if input.ProductID == 0 {
-			return nil, fmt.Errorf("product_id is required for action 'update'")
-		}
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
-		}
-		return r.updateProduct(ctx, input.ProductID, input.Data)
+		return nil, fmt.Errorf("ProductsService.Update is not available. Please use 'catalogs' tool with your products catalog ID")
 	case "delete":
-		if len(input.IDs) == 0 {
-			return nil, fmt.Errorf("ids is required for action 'delete'")
-		}
-		return nil, r.sdk.Products().Delete(ctx, input.IDs)
+		return nil, fmt.Errorf("ProductsService.Delete is not available. Please use 'catalogs' tool with your products catalog ID")
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) searchProducts(ctx context.Context, filter *ProductFilter) ([]models.CatalogElement, error) {
-	f := &services.ProductsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Query != "" {
-			f.Query = filter.Query
-		}
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.Products().Get(ctx, f)
+func (r *Registry) searchProducts(ctx context.Context, filter *ProductFilter) ([]*models.CatalogElement, error) {
+	return nil, fmt.Errorf("ProductsService.Get is not available. Please use 'catalogs' tool with your products catalog ID")
 }
 
-func (r *Registry) createProduct(ctx context.Context, data *ProductData) ([]models.CatalogElement, error) {
-	product := models.CatalogElement{
-		Name: data.Name,
-	}
-	// TODO: добавить поддержку custom_fields для SKU, price и т.д.
-	return r.sdk.Products().Create(ctx, []models.CatalogElement{product})
+func (r *Registry) createProduct(ctx context.Context, data *ProductData) ([]*models.CatalogElement, error) {
+	return nil, fmt.Errorf("ProductsService.Create is not available. Please use 'catalogs' tool with your products catalog ID")
 }
 
-func (r *Registry) updateProduct(ctx context.Context, id int, data *ProductData) ([]models.CatalogElement, error) {
-	product := models.CatalogElement{
-		ID: id,
-	}
-	if data.Name != "" {
-		product.Name = data.Name
-	}
-	return r.sdk.Products().Update(ctx, []models.CatalogElement{product})
+func (r *Registry) updateProduct(ctx context.Context, id int, data *ProductData) ([]*models.CatalogElement, error) {
+	return nil, fmt.Errorf("ProductsService.Update is not available. Please use 'catalogs' tool with your products catalog ID")
 }

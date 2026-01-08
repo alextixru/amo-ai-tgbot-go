@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -15,8 +15,8 @@ type EntitiesInput struct {
 	// EntityType тип сущности: leads, contacts, companies
 	EntityType string `json:"entity_type" jsonschema_description:"Тип сущности: leads, contacts, companies"`
 
-	// Action действие: search, get, create, update, delete, link, unlink
-	Action string `json:"action" jsonschema_description:"Действие: search, get, create, update, delete, link, unlink"`
+	// Action действие: search, get, create, update, sync, delete, link, unlink, get_chats, link_chats
+	Action string `json:"action" jsonschema_description:"Действие: search, get, create, update, sync, delete, link, unlink, get_chats, link_chats"`
 
 	// ID идентификатор сущности (для get, update, delete, link, unlink)
 	ID int `json:"id,omitempty" jsonschema_description:"ID сущности (для get, update, delete, link, unlink)"`
@@ -64,7 +64,8 @@ func (r *Registry) registerEntitiesTool() {
 		"entities",
 		"Работа с основными сущностями amoCRM: сделки (leads), контакты (contacts), компании (companies). "+
 			"Поддерживает: search (поиск), get (получение по ID), create (создание), update (обновление), "+
-			"delete (удаление, только leads), link (связывание), unlink (отвязывание).",
+			"sync (создание или обновление), delete (удаление, только leads), link (связывание), unlink (отвязывание), "+
+			"get_chats (получение чатов, только contacts), link_chats (привязка чатов, только contacts).",
 		func(ctx *ai.ToolContext, input EntitiesInput) (any, error) {
 			return r.handleEntities(ctx.Context, input)
 		},
@@ -95,7 +96,7 @@ func (r *Registry) handleLeads(ctx context.Context, input EntitiesInput) (any, e
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.sdk.Leads().GetOne(ctx, input.ID, []string{"contacts", "companies"})
+		return r.sdk.Leads().GetOne(ctx, input.ID)
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
@@ -109,6 +110,23 @@ func (r *Registry) handleLeads(ctx context.Context, input EntitiesInput) (any, e
 			return nil, fmt.Errorf("data is required for action 'update'")
 		}
 		return r.updateLead(ctx, input.ID, input.Data)
+	case "sync":
+		if input.Data == nil {
+			return nil, fmt.Errorf("data is required for action 'sync'")
+		}
+		lead := &models.Lead{
+			Name:       input.Data.Name,
+			Price:      input.Data.Price,
+			StatusID:   input.Data.StatusID,
+			PipelineID: input.Data.PipelineID,
+		}
+		if input.ID > 0 {
+			lead.ID = input.ID
+		}
+		if input.Data.ResponsibleUserID > 0 {
+			lead.ResponsibleUserID = input.Data.ResponsibleUserID
+		}
+		return r.sdk.Leads().SyncOne(ctx, lead, []string{"contacts", "companies"})
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'delete'")
@@ -129,33 +147,30 @@ func (r *Registry) handleLeads(ctx context.Context, input EntitiesInput) (any, e
 	}
 }
 
-func (r *Registry) searchLeads(ctx context.Context, filter *EntitiesFilter) ([]models.Lead, error) {
-	f := &services.LeadsFilter{
-		Limit: 50,
-		Page:  1,
-		With:  []string{"contacts", "companies"},
-	}
+func (r *Registry) searchLeads(ctx context.Context, filter *EntitiesFilter) ([]*models.Lead, error) {
+	f := filters.NewLeadsFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Query != "" {
-			f.Query = filter.Query
+			f.SetQuery(filter.Query)
 		}
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if len(filter.ResponsibleUserID) > 0 {
-			f.FilterByResponsibleUserID = filter.ResponsibleUserID
+			f.SetResponsibleUserIDs(filter.ResponsibleUserID)
 		}
 		if len(filter.PipelineID) > 0 {
-			f.FilterByPipelineID = filter.PipelineID
+			f.SetPipelineIDs(filter.PipelineID)
 		}
-		if len(filter.StatusID) > 0 {
-			f.FilterByStatusID = filter.StatusID
-		}
+		// StatusIDs не поддерживается напрямую — требуется SetStatuses с LeadStatusFilter
 	}
-	return r.sdk.Leads().Get(ctx, f)
+	leads, _, err := r.sdk.Leads().Get(ctx, f)
+	return leads, err
 }
 
 func (r *Registry) createLead(ctx context.Context, data *EntityData) (*models.Lead, error) {
@@ -218,7 +233,7 @@ func (r *Registry) handleContacts(ctx context.Context, input EntitiesInput) (any
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.sdk.Contacts().GetOne(ctx, input.ID, []string{"leads", "companies"})
+		return r.sdk.Contacts().GetOne(ctx, input.ID)
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
@@ -232,6 +247,28 @@ func (r *Registry) handleContacts(ctx context.Context, input EntitiesInput) (any
 			return nil, fmt.Errorf("data is required for action 'update'")
 		}
 		return r.updateContact(ctx, input.ID, input.Data)
+	case "sync":
+		if input.Data == nil {
+			return nil, fmt.Errorf("data is required for action 'sync'")
+		}
+		contact := &models.Contact{
+			Name: input.Data.Name,
+		}
+		if input.ID > 0 {
+			contact.ID = input.ID
+		}
+		if input.Data.ResponsibleUserID > 0 {
+			contact.ResponsibleUserID = input.Data.ResponsibleUserID
+		}
+		return r.sdk.Contacts().SyncOne(ctx, contact, []string{"leads", "companies"})
+	case "get_chats":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for action 'get_chats'")
+		}
+		return r.sdk.Contacts().GetChats(ctx, input.ID)
+	case "link_chats":
+		// Требуется расширить EntitiesInput для поддержки ChatLinks
+		return nil, fmt.Errorf("link_chats requires ChatLinks field in input (not yet implemented)")
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
@@ -247,41 +284,41 @@ func (r *Registry) handleContacts(ctx context.Context, input EntitiesInput) (any
 	}
 }
 
-func (r *Registry) searchContacts(ctx context.Context, filter *EntitiesFilter) ([]models.Contact, error) {
-	f := &services.ContactsFilter{
-		Limit: 50,
-		Page:  1,
-		With:  []string{"leads", "companies"},
-	}
+func (r *Registry) searchContacts(ctx context.Context, filter *EntitiesFilter) ([]*models.Contact, error) {
+	f := filters.NewContactsFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Query != "" {
-			f.Query = filter.Query
+			f.SetQuery(filter.Query)
 		}
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if len(filter.ResponsibleUserID) > 0 {
-			f.FilterByResponsibleUserID = filter.ResponsibleUserID
+			f.SetResponsibleUserIDs(filter.ResponsibleUserID)
 		}
 	}
-	return r.sdk.Contacts().Get(ctx, f)
+	contacts, _, err := r.sdk.Contacts().Get(ctx, f)
+	return contacts, err
 }
 
-func (r *Registry) createContact(ctx context.Context, data *EntityData) ([]models.Contact, error) {
-	contact := models.Contact{
+func (r *Registry) createContact(ctx context.Context, data *EntityData) ([]*models.Contact, error) {
+	contact := &models.Contact{
 		Name: data.Name,
 	}
 	if data.ResponsibleUserID > 0 {
 		contact.ResponsibleUserID = data.ResponsibleUserID
 	}
-	return r.sdk.Contacts().Create(ctx, []models.Contact{contact})
+	contacts, _, err := r.sdk.Contacts().Create(ctx, []*models.Contact{contact})
+	return contacts, err
 }
 
-func (r *Registry) updateContact(ctx context.Context, id int, data *EntityData) ([]models.Contact, error) {
-	contact := models.Contact{}
+func (r *Registry) updateContact(ctx context.Context, id int, data *EntityData) ([]*models.Contact, error) {
+	contact := &models.Contact{}
 	contact.ID = id
 	if data.Name != "" {
 		contact.Name = data.Name
@@ -289,7 +326,8 @@ func (r *Registry) updateContact(ctx context.Context, id int, data *EntityData) 
 	if data.ResponsibleUserID > 0 {
 		contact.ResponsibleUserID = data.ResponsibleUserID
 	}
-	return r.sdk.Contacts().Update(ctx, []models.Contact{contact})
+	contacts, _, err := r.sdk.Contacts().Update(ctx, []*models.Contact{contact})
+	return contacts, err
 }
 
 // ============ COMPANIES ============
@@ -302,7 +340,7 @@ func (r *Registry) handleCompanies(ctx context.Context, input EntitiesInput) (an
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.sdk.Companies().GetOne(ctx, input.ID, []string{"leads", "contacts"})
+		return r.sdk.Companies().GetOne(ctx, input.ID)
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
@@ -316,6 +354,20 @@ func (r *Registry) handleCompanies(ctx context.Context, input EntitiesInput) (an
 			return nil, fmt.Errorf("data is required for action 'update'")
 		}
 		return r.updateCompany(ctx, input.ID, input.Data)
+	case "sync":
+		if input.Data == nil {
+			return nil, fmt.Errorf("data is required for action 'sync'")
+		}
+		company := &models.Company{
+			Name: input.Data.Name,
+		}
+		if input.ID > 0 {
+			company.ID = input.ID
+		}
+		if input.Data.ResponsibleUserID > 0 {
+			company.ResponsibleUserID = input.Data.ResponsibleUserID
+		}
+		return r.sdk.Companies().SyncOne(ctx, company, []string{"leads", "contacts"})
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
@@ -331,41 +383,41 @@ func (r *Registry) handleCompanies(ctx context.Context, input EntitiesInput) (an
 	}
 }
 
-func (r *Registry) searchCompanies(ctx context.Context, filter *EntitiesFilter) ([]models.Company, error) {
-	f := &services.CompaniesFilter{
-		Limit: 50,
-		Page:  1,
-		With:  []string{"leads", "contacts"},
-	}
+func (r *Registry) searchCompanies(ctx context.Context, filter *EntitiesFilter) ([]*models.Company, error) {
+	f := filters.NewCompaniesFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Query != "" {
-			f.Query = filter.Query
+			f.SetQuery(filter.Query)
 		}
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if len(filter.ResponsibleUserID) > 0 {
-			f.FilterByResponsibleUserID = filter.ResponsibleUserID
+			f.SetResponsibleUserIDs(filter.ResponsibleUserID)
 		}
 	}
-	return r.sdk.Companies().Get(ctx, f)
+	companies, _, err := r.sdk.Companies().Get(ctx, f)
+	return companies, err
 }
 
-func (r *Registry) createCompany(ctx context.Context, data *EntityData) ([]models.Company, error) {
-	company := models.Company{
+func (r *Registry) createCompany(ctx context.Context, data *EntityData) ([]*models.Company, error) {
+	company := &models.Company{
 		Name: data.Name,
 	}
 	if data.ResponsibleUserID > 0 {
 		company.ResponsibleUserID = data.ResponsibleUserID
 	}
-	return r.sdk.Companies().Create(ctx, []models.Company{company})
+	companies, _, err := r.sdk.Companies().Create(ctx, []*models.Company{company})
+	return companies, err
 }
 
-func (r *Registry) updateCompany(ctx context.Context, id int, data *EntityData) ([]models.Company, error) {
-	company := models.Company{}
+func (r *Registry) updateCompany(ctx context.Context, id int, data *EntityData) ([]*models.Company, error) {
+	company := &models.Company{}
 	company.ID = id
 	if data.Name != "" {
 		company.Name = data.Name
@@ -373,5 +425,6 @@ func (r *Registry) updateCompany(ctx context.Context, id int, data *EntityData) 
 	if data.ResponsibleUserID > 0 {
 		company.ResponsibleUserID = data.ResponsibleUserID
 	}
-	return r.sdk.Companies().Update(ctx, []models.Company{company})
+	companies, _, err := r.sdk.Companies().Update(ctx, []*models.Company{company})
+	return companies, err
 }

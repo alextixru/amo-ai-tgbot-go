@@ -43,7 +43,8 @@ func (r *Registry) handleAdminPipelines(ctx context.Context, input AdminPipeline
 	switch input.Action {
 	// Pipeline actions
 	case "list":
-		return r.sdk.Pipelines().Get(ctx)
+		pipelines, _, err := r.sdk.Pipelines().Get(ctx, nil)
+		return pipelines, err
 	case "get":
 		if input.PipelineID == 0 {
 			return nil, fmt.Errorf("pipeline_id is required for action 'get'")
@@ -66,18 +67,19 @@ func (r *Registry) handleAdminPipelines(ctx context.Context, input AdminPipeline
 		if input.PipelineID == 0 {
 			return nil, fmt.Errorf("pipeline_id is required for action 'delete'")
 		}
-		err := r.sdk.Pipelines().Delete(ctx, input.PipelineID)
+		err := r.sdk.Pipelines().Delete(ctx, []int{input.PipelineID})
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"success": true, "deleted_pipeline_id": input.PipelineID}, nil
 
-	// Status actions
-	case "list_statuses":
+	// Status actions (using StatusesService)
+	case "list_statuses", "get_statuses":
 		if input.PipelineID == 0 {
 			return nil, fmt.Errorf("pipeline_id is required for action 'list_statuses'")
 		}
-		return r.sdk.Pipelines().GetStatuses(ctx, input.PipelineID)
+		statuses, _, err := r.sdk.Statuses(input.PipelineID).Get(ctx, nil)
+		return statuses, err
 	case "get_status":
 		if input.PipelineID == 0 {
 			return nil, fmt.Errorf("pipeline_id is required for action 'get_status'")
@@ -85,7 +87,7 @@ func (r *Registry) handleAdminPipelines(ctx context.Context, input AdminPipeline
 		if input.StatusID == 0 {
 			return nil, fmt.Errorf("status_id is required for action 'get_status'")
 		}
-		return r.sdk.Pipelines().GetStatus(ctx, input.PipelineID, input.StatusID)
+		return r.sdk.Statuses(input.PipelineID).GetOne(ctx, input.StatusID, nil)
 	case "create_status":
 		if input.PipelineID == 0 {
 			return nil, fmt.Errorf("pipeline_id is required for action 'create_status'")
@@ -112,7 +114,7 @@ func (r *Registry) handleAdminPipelines(ctx context.Context, input AdminPipeline
 		if input.StatusID == 0 {
 			return nil, fmt.Errorf("status_id is required for action 'delete_status'")
 		}
-		err := r.sdk.Pipelines().DeleteStatus(ctx, input.PipelineID, input.StatusID)
+		err := r.sdk.Statuses(input.PipelineID).DeleteOne(ctx, input.StatusID)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +129,7 @@ func (r *Registry) handleAdminPipelines(ctx context.Context, input AdminPipeline
 // Pipeline helpers
 // ============================================================================
 
-func (r *Registry) createPipeline(ctx context.Context, data map[string]any) ([]models.Pipeline, error) {
+func (r *Registry) createPipeline(ctx context.Context, data map[string]any) ([]*models.Pipeline, error) {
 	pipeline := models.Pipeline{}
 
 	if name, ok := data["name"].(string); ok {
@@ -143,10 +145,11 @@ func (r *Registry) createPipeline(ctx context.Context, data map[string]any) ([]m
 		pipeline.IsUnsortedOn = isUnsortedOn
 	}
 
-	return r.sdk.Pipelines().Create(ctx, []models.Pipeline{pipeline})
+	pipelines, _, err := r.sdk.Pipelines().Create(ctx, []*models.Pipeline{&pipeline})
+	return pipelines, err
 }
 
-func (r *Registry) updatePipeline(ctx context.Context, id int, data map[string]any) ([]models.Pipeline, error) {
+func (r *Registry) updatePipeline(ctx context.Context, id int, data map[string]any) ([]*models.Pipeline, error) {
 	pipeline := models.Pipeline{ID: id}
 
 	if name, ok := data["name"].(string); ok {
@@ -162,7 +165,7 @@ func (r *Registry) updatePipeline(ctx context.Context, id int, data map[string]a
 		pipeline.IsUnsortedOn = isUnsortedOn
 	}
 
-	return r.sdk.Pipelines().Update(ctx, []models.Pipeline{pipeline})
+	return r.sdk.Pipelines().Update(ctx, []*models.Pipeline{&pipeline})
 }
 
 // ============================================================================
@@ -182,7 +185,14 @@ func (r *Registry) createStatus(ctx context.Context, pipelineID int, data map[st
 		status.Color = color
 	}
 
-	return r.sdk.Pipelines().CreateStatus(ctx, pipelineID, status)
+	statuses, _, err := r.sdk.Statuses(pipelineID).Create(ctx, []*models.Status{status})
+	if err != nil {
+		return nil, err
+	}
+	if len(statuses) == 0 {
+		return nil, fmt.Errorf("no status returned from create")
+	}
+	return statuses[0], nil
 }
 
 func (r *Registry) updateStatus(ctx context.Context, pipelineID int, statusID int, data map[string]any) (*models.Status, error) {
@@ -198,5 +208,5 @@ func (r *Registry) updateStatus(ctx context.Context, pipelineID int, statusID in
 		status.Color = color
 	}
 
-	return r.sdk.Pipelines().UpdateStatus(ctx, pipelineID, status)
+	return r.sdk.Statuses(pipelineID).UpdateOne(ctx, status)
 }

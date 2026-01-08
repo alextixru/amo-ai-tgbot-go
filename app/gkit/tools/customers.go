@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
@@ -149,25 +150,25 @@ func (r *Registry) handleCustomersLayer(ctx context.Context, input CustomersInpu
 }
 
 func (r *Registry) listCustomers(ctx context.Context, filter *CustomerFilter) ([]models.Customer, error) {
-	f := &services.CustomersFilter{
-		Limit: 50,
-		Page:  1,
-	}
+	f := filters.NewCustomersFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if filter.Query != "" {
-			f.Query = filter.Query
+			f.SetQuery(filter.Query)
 		}
 		if len(filter.ResponsibleUserIDs) > 0 {
-			f.ResponsibleUserIDs = filter.ResponsibleUserIDs
+			f.SetResponsibleUserIDs(filter.ResponsibleUserIDs)
 		}
 	}
-	return r.sdk.Customers().Get(ctx, f)
+	customers, _, err := r.sdk.Customers().Get(ctx, f)
+	return customers, err
 }
 
 func (r *Registry) createCustomer(ctx context.Context, data *CustomerData) ([]models.Customer, error) {
@@ -186,7 +187,8 @@ func (r *Registry) createCustomer(ctx context.Context, data *CustomerData) ([]mo
 	if data.StatusID > 0 {
 		customer.StatusID = data.StatusID
 	}
-	return r.sdk.Customers().Create(ctx, []models.Customer{customer})
+	customers, _, err := r.sdk.Customers().Create(ctx, []models.Customer{customer})
+	return customers, err
 }
 
 func (r *Registry) updateCustomer(ctx context.Context, id int, data *CustomerData) ([]models.Customer, error) {
@@ -207,7 +209,8 @@ func (r *Registry) updateCustomer(ctx context.Context, id int, data *CustomerDat
 	if data.StatusID > 0 {
 		customer.StatusID = data.StatusID
 	}
-	return r.sdk.Customers().Update(ctx, []models.Customer{customer})
+	customers, _, err := r.sdk.Customers().Update(ctx, []models.Customer{customer})
+	return customers, err
 }
 
 func (r *Registry) linkCustomer(ctx context.Context, customerID int, data *CustomerLinkData) ([]models.EntityLink, error) {
@@ -255,18 +258,58 @@ func (r *Registry) handleBonusPointsLayer(ctx context.Context, input CustomersIn
 
 func (r *Registry) handleStatusesLayer(ctx context.Context, input CustomersInput) (any, error) {
 	switch input.Action {
-	case "list_statuses":
-		page := 1
-		limit := 50
-		if input.Filter != nil {
-			if input.Filter.Page > 0 {
-				page = input.Filter.Page
-			}
-			if input.Filter.Limit > 0 {
-				limit = input.Filter.Limit
-			}
+	case "list_statuses", "search":
+		// CustomerStatusesService наследует BaseEntityService, Get принимает url.Values
+		statuses, _, err := r.sdk.CustomerStatuses().Get(ctx, nil)
+		return statuses, err
+	case "get_status":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for action 'get_status'")
 		}
-		return r.sdk.CustomerStatuses().Get(ctx, page, limit)
+		return r.sdk.CustomerStatuses().GetOne(ctx, input.ID)
+	case "create_status":
+		if input.Data == nil || input.Data.Name == "" {
+			return nil, fmt.Errorf("data.name is required for action 'create_status'")
+		}
+		status := models.Status{
+			Name: input.Data.Name,
+		}
+		statuses, _, err := r.sdk.CustomerStatuses().Create(ctx, []models.Status{status})
+		if err != nil {
+			return nil, err
+		}
+		if len(statuses) == 0 {
+			return nil, fmt.Errorf("no status returned from create")
+		}
+		return statuses[0], nil
+	case "update_status":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for action 'update_status'")
+		}
+		if input.Data == nil {
+			return nil, fmt.Errorf("data is required for action 'update_status'")
+		}
+		status := models.Status{
+			ID:   input.ID,
+			Name: input.Data.Name,
+		}
+		statuses, _, err := r.sdk.CustomerStatuses().Update(ctx, []models.Status{status})
+		if err != nil {
+			return nil, err
+		}
+		if len(statuses) == 0 {
+			return nil, fmt.Errorf("no status returned from update")
+		}
+		return statuses[0], nil
+	case "delete_status":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for action 'delete_status'")
+		}
+		err := r.sdk.CustomerStatuses().Delete(ctx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"success": true, "deleted_status_id": input.ID}, nil
 	default:
 		return nil, fmt.Errorf("unknown action for statuses layer: %s", input.Action)
 	}
@@ -293,12 +336,13 @@ func (r *Registry) handleTransactionsLayer(ctx context.Context, input CustomersI
 				f.Page = input.Filter.Page
 			}
 		}
-		return r.sdk.CustomerTransactions(input.CustomerID).Get(ctx, f)
+		transactions, _, err := r.sdk.CustomerTransactions(input.CustomerID).Get(ctx, f)
+		return transactions, err
 	case "create_transaction":
 		if input.TransactionData == nil || input.TransactionData.Price == 0 {
 			return nil, fmt.Errorf("transaction_data.price is required for action 'create_transaction'")
 		}
-		transaction := services.Transaction{
+		transaction := models.Transaction{
 			Price:   input.TransactionData.Price,
 			Comment: input.TransactionData.Comment,
 		}
@@ -306,7 +350,7 @@ func (r *Registry) handleTransactionsLayer(ctx context.Context, input CustomersI
 		if input.TransactionData.AccrueBonus {
 			accrueBonus = input.TransactionData.AccrueBonus
 		}
-		return r.sdk.CustomerTransactions(input.CustomerID).Create(ctx, []services.Transaction{transaction}, accrueBonus)
+		return r.sdk.CustomerTransactions(input.CustomerID).Create(ctx, []models.Transaction{transaction}, accrueBonus)
 	case "delete_transaction":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'delete_transaction'")
@@ -325,26 +369,50 @@ func (r *Registry) handleTransactionsLayer(ctx context.Context, input CustomersI
 
 func (r *Registry) handleSegmentsLayer(ctx context.Context, input CustomersInput) (any, error) {
 	switch input.Action {
-	case "list_segments":
-		f := &services.SegmentsFilter{
-			Limit: 50,
-			Page:  1,
-		}
+	case "list_segments", "search":
+		f := filters.NewSegmentsFilter()
+		f.SetLimit(50)
+		f.SetPage(1)
 		if input.Filter != nil {
 			if input.Filter.Limit > 0 {
-				f.Limit = input.Filter.Limit
+				f.SetLimit(input.Filter.Limit)
 			}
 			if input.Filter.Page > 0 {
-				f.Page = input.Filter.Page
+				f.SetPage(input.Filter.Page)
 			}
 		}
-		return r.sdk.Segments().Get(ctx, f)
+		segments, _, err := r.sdk.Segments().Get(ctx, f)
+		return segments, err
 	case "get_segment":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get_segment'")
 		}
 		return r.sdk.Segments().GetOne(ctx, input.ID)
+	case "create_segment":
+		if input.Data == nil || input.Data.Name == "" {
+			return nil, fmt.Errorf("data.name is required for action 'create_segment'")
+		}
+		segment := &models.CustomerSegment{
+			Name: input.Data.Name,
+		}
+		segments, _, err := r.sdk.Segments().Create(ctx, []*models.CustomerSegment{segment})
+		if err != nil {
+			return nil, err
+		}
+		if len(segments) == 0 {
+			return nil, fmt.Errorf("no segment returned from create")
+		}
+		return segments[0], nil
+	case "delete_segment":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for action 'delete_segment'")
+		}
+		err := r.sdk.Segments().Delete(ctx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"success": true, "deleted_segment_id": input.ID}, nil
 	default:
-		return nil, fmt.Errorf("unknown action for segments layer: %s", input.Action)
+		return nil, fmt.Errorf("segments supports 'list_segments/search', 'get_segment', 'create_segment', 'delete_segment' (no update)")
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -102,7 +101,7 @@ func (r *Registry) handleCatalogs(ctx context.Context, input CatalogsInput) (any
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required for action 'get_element'")
 		}
-		return r.sdk.CatalogElements(input.CatalogID).GetOne(ctx, input.ElementID)
+		return r.sdk.CatalogElements(input.CatalogID).GetOne(ctx, input.ElementID, nil)
 	case "create_element":
 		if input.CatalogID == 0 {
 			return nil, fmt.Errorf("catalog_id is required for action 'create_element'")
@@ -129,35 +128,25 @@ func (r *Registry) handleCatalogs(ctx context.Context, input CatalogsInput) (any
 
 // ============ CATALOGS ============
 
-func (r *Registry) listCatalogs(ctx context.Context, filter *CatalogFilter) ([]models.Catalog, error) {
-	f := &services.CatalogsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.Catalogs().Get(ctx, f)
+func (r *Registry) listCatalogs(ctx context.Context, filter *CatalogFilter) ([]*models.Catalog, error) {
+	// CatalogsFilter не поддерживает SetLimit/SetPage
+	catalogs, _, err := r.sdk.Catalogs().Get(ctx, nil)
+	return catalogs, err
 }
 
-func (r *Registry) createCatalog(ctx context.Context, data *CatalogData) ([]models.Catalog, error) {
-	catalog := models.Catalog{
+func (r *Registry) createCatalog(ctx context.Context, data *CatalogData) ([]*models.Catalog, error) {
+	catalog := &models.Catalog{
 		Name:            data.Name,
 		CanAddElements:  data.CanAddElements,
 		CanShowInCards:  data.CanShowInCards,
 		CanLinkMultiple: data.CanLinkMultiple,
 	}
-	// TODO: добавить поддержку Type если SDK поддерживает
-	return r.sdk.Catalogs().Create(ctx, []models.Catalog{catalog})
+	catalogs, _, err := r.sdk.Catalogs().Create(ctx, []*models.Catalog{catalog})
+	return catalogs, err
 }
 
-func (r *Registry) updateCatalog(ctx context.Context, id int, data *CatalogData) ([]models.Catalog, error) {
-	catalog := models.Catalog{
+func (r *Registry) updateCatalog(ctx context.Context, id int, data *CatalogData) ([]*models.Catalog, error) {
+	catalog := &models.Catalog{
 		ID: id,
 	}
 	if data.Name != "" {
@@ -167,45 +156,33 @@ func (r *Registry) updateCatalog(ctx context.Context, id int, data *CatalogData)
 	catalog.CanShowInCards = data.CanShowInCards
 	catalog.CanLinkMultiple = data.CanLinkMultiple
 
-	return r.sdk.Catalogs().Update(ctx, []models.Catalog{catalog})
+	catalogs, _, err := r.sdk.Catalogs().Update(ctx, []*models.Catalog{catalog})
+	return catalogs, err
 }
 
 // ============ CATALOG ELEMENTS ============
 
-func (r *Registry) listCatalogElements(ctx context.Context, catalogID int, filter *CatalogFilter) ([]models.CatalogElement, error) {
-	f := &services.CatalogElementsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-		if filter.Query != "" {
-			f.Query = filter.Query
-		}
-	}
-	return r.sdk.CatalogElements(catalogID).Get(ctx, f)
+func (r *Registry) listCatalogElements(ctx context.Context, catalogID int, filter *CatalogFilter) ([]*models.CatalogElement, error) {
+	// CatalogElementsService наследует BaseEntityIdService, Get принимает url.Values
+	elements, _, err := r.sdk.CatalogElements(catalogID).Get(ctx, nil)
+	return elements, err
 }
 
-func (r *Registry) createCatalogElement(ctx context.Context, catalogID int, data *CatalogElementData) ([]models.CatalogElement, error) {
-	element := models.CatalogElement{
+func (r *Registry) createCatalogElement(ctx context.Context, catalogID int, data *CatalogElementData) ([]*models.CatalogElement, error) {
+	element := &models.CatalogElement{
 		Name: data.Name,
 	}
-	// TODO: добавить поддержку custom_fields_values
-	return r.sdk.CatalogElements(catalogID).Create(ctx, []models.CatalogElement{element})
+	elements, _, err := r.sdk.CatalogElements(catalogID).Create(ctx, []*models.CatalogElement{element})
+	return elements, err
 }
 
-func (r *Registry) updateCatalogElement(ctx context.Context, catalogID int, elementID int, data *CatalogElementData) ([]models.CatalogElement, error) {
-	element := models.CatalogElement{
+func (r *Registry) updateCatalogElement(ctx context.Context, catalogID int, elementID int, data *CatalogElementData) ([]*models.CatalogElement, error) {
+	element := &models.CatalogElement{
 		ID: elementID,
 	}
 	if data.Name != "" {
 		element.Name = data.Name
 	}
-	// TODO: добавить поддержку custom_fields_values
-	return r.sdk.CatalogElements(catalogID).Update(ctx, []models.CatalogElement{element})
+	elements, _, err := r.sdk.CatalogElements(catalogID).Update(ctx, []*models.CatalogElement{element})
+	return elements, err
 }

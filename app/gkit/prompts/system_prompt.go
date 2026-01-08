@@ -42,7 +42,7 @@ func BuildSystemPrompt(cfg *SystemPromptConfig) string {
 
 **Работа с данными:**
 - entities — сделки (leads), контакты (contacts), компании (companies). Actions: search, get, create, update, delete, link
-- activities — задачи (tasks), примечания (notes), звонки (calls), события (events). Actions: list, get, create, complete
+- activities — задачи (tasks), примечания (notes), звонки (calls), события (events). Actions: list, get, create, complete. ТРЕБУЕТ parent {type, id}.
 - complex_create — создание сделки с контактами одним запросом
 - products — товары и привязка к сделкам
 - catalogs — справочники (каталоги)

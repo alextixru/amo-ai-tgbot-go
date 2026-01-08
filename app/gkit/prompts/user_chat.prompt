@@ -45,10 +45,10 @@ input:
 |---------------------|------|-----------|
 | "покажи мои сделки" | entities | `{action:"search", entity_type:"leads"}` |
 | "найди контакт Иван" | entities | `{action:"search", entity_type:"contacts", filter:{query:"Иван"}}` |
-| "покажи мои задачи" | activities | `{layer:"tasks", action:"list"}` |
-| "создай задачу на завтра" | activities | `{layer:"tasks", action:"create", data:{text:"...", complete_till:...}}` |
+| "покажи мои задачи" | activities | `{layer:"tasks", action:"list", parent:{type:"leads", id:123}}` |
+| "создай задачу на завтра" | activities | `{layer:"tasks", action:"create", parent:{type:"leads", id:123}, data:{text:"задача", complete_till_at:1767042000}}` |
 | "какие воронки есть?" | admin_pipelines | `{action:"search"}` |
-| "создай сделку с контактом" | complex_create | `{lead:{name:"...", _embedded:{contacts:[{name:"..."}]}}}` |
+| "создай сделку с контактом" | complex_create | `{lead:{name:"Новая сделка"}, contacts:[{name:"Иван", phone:"7999..."}]}` |
 | "покажи неразобранное" | unsorted | `{action:"search"}` |
 
 ## Когда использовать tools

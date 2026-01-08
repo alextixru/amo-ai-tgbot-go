@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -64,13 +64,20 @@ func (r *Registry) registerUnsortedTool() {
 
 func (r *Registry) handleUnsorted(ctx context.Context, input UnsortedInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listUnsorted(ctx, input.Filter)
 	case "get":
 		if input.UID == "" {
 			return nil, fmt.Errorf("uid is required for action 'get'")
 		}
-		return r.sdk.Unsorted().GetOne(ctx, input.UID)
+		items, _, err := r.sdk.Unsorted().Get(ctx, filters.NewUnsortedFilter().SetUIDs([]string{input.UID}))
+		if err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			return nil, fmt.Errorf("unsorted item with uid %s not found", input.UID)
+		}
+		return items[0], nil
 	case "accept":
 		if input.UID == "" {
 			return nil, fmt.Errorf("uid is required for action 'accept'")
@@ -96,26 +103,26 @@ func (r *Registry) handleUnsorted(ctx context.Context, input UnsortedInput) (any
 	}
 }
 
-func (r *Registry) listUnsorted(ctx context.Context, filter *UnsortedFilter) ([]models.Unsorted, error) {
-	f := &services.UnsortedFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) listUnsorted(ctx context.Context, filter *UnsortedFilter) ([]*models.Unsorted, error) {
+	f := filters.NewUnsortedFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 		if len(filter.Category) > 0 {
-			f.FilterByCategory = filter.Category
+			f.SetCategory(filter.Category)
 		}
 		if len(filter.PipelineID) > 0 {
-			f.FilterByPipelineID = filter.PipelineID
+			f.SetPipelineID(filter.PipelineID[0])
 		}
 	}
-	return r.sdk.Unsorted().Get(ctx, f)
+	items, _, err := r.sdk.Unsorted().Get(ctx, f)
+	return items, err
 }
 
 func (r *Registry) acceptUnsorted(ctx context.Context, uid string, params *UnsortedAcceptParams) (*models.UnsortedAcceptResult, error) {
@@ -142,14 +149,10 @@ func (r *Registry) linkUnsorted(ctx context.Context, uid string, data *UnsortedL
 }
 
 func (r *Registry) unsortedSummary(ctx context.Context, filter *UnsortedFilter) (*models.UnsortedSummary, error) {
-	var f *services.UnsortedFilter
+	f := filters.NewUnsortedSummaryFilter()
 	if filter != nil {
-		f = &services.UnsortedFilter{}
-		if len(filter.Category) > 0 {
-			f.FilterByCategory = filter.Category
-		}
 		if len(filter.PipelineID) > 0 {
-			f.FilterByPipelineID = filter.PipelineID
+			f.SetPipelineID(filter.PipelineID[0])
 		}
 	}
 	return r.sdk.Unsorted().Summary(ctx, f)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
@@ -86,7 +87,7 @@ func (r *Registry) handleCustomFields(ctx context.Context, input AdminSchemaInpu
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.sdk.CustomFields().GetOne(ctx, input.EntityType, input.ID)
+		return r.sdk.CustomFields().GetOne(ctx, input.EntityType, input.ID, nil)
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
@@ -114,24 +115,24 @@ func (r *Registry) handleCustomFields(ctx context.Context, input AdminSchemaInpu
 	}
 }
 
-func (r *Registry) searchCustomFields(ctx context.Context, entityType string, filter *SchemaFilter) ([]models.CustomField, error) {
-	f := &services.CustomFieldsFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) searchCustomFields(ctx context.Context, entityType string, filter *SchemaFilter) ([]*models.CustomField, error) {
+	f := filters.NewCustomFieldsFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 	}
-	return r.sdk.CustomFields().Get(ctx, entityType, f)
+	fields, _, err := r.sdk.CustomFields().Get(ctx, entityType, f)
+	return fields, err
 }
 
-func (r *Registry) createCustomField(ctx context.Context, entityType string, data map[string]any) ([]models.CustomField, error) {
-	field := models.CustomField{}
+func (r *Registry) createCustomField(ctx context.Context, entityType string, data map[string]any) ([]*models.CustomField, error) {
+	field := &models.CustomField{}
 
 	if name, ok := data["name"].(string); ok {
 		field.Name = name
@@ -145,18 +146,19 @@ func (r *Registry) createCustomField(ctx context.Context, entityType string, dat
 	if sort, ok := data["sort"].(float64); ok {
 		field.Sort = int(sort)
 	}
-	if groupID, ok := data["group_id"].(float64); ok {
-		field.GroupID = int(groupID)
+	if groupID, ok := data["group_id"].(string); ok {
+		field.GroupID = groupID
 	}
 	if isRequired, ok := data["is_required"].(bool); ok {
 		field.IsRequired = isRequired
 	}
 
-	return r.sdk.CustomFields().Create(ctx, entityType, []models.CustomField{field})
+	fields, _, err := r.sdk.CustomFields().Create(ctx, entityType, []*models.CustomField{field})
+	return fields, err
 }
 
-func (r *Registry) updateCustomField(ctx context.Context, entityType string, id int, data map[string]any) ([]models.CustomField, error) {
-	field := models.CustomField{ID: id}
+func (r *Registry) updateCustomField(ctx context.Context, entityType string, id int, data map[string]any) ([]*models.CustomField, error) {
+	field := &models.CustomField{ID: id}
 
 	if name, ok := data["name"].(string); ok {
 		field.Name = name
@@ -164,14 +166,15 @@ func (r *Registry) updateCustomField(ctx context.Context, entityType string, id 
 	if sort, ok := data["sort"].(float64); ok {
 		field.Sort = int(sort)
 	}
-	if groupID, ok := data["group_id"].(float64); ok {
-		field.GroupID = int(groupID)
+	if groupID, ok := data["group_id"].(string); ok {
+		field.GroupID = groupID
 	}
 	if isRequired, ok := data["is_required"].(bool); ok {
 		field.IsRequired = isRequired
 	}
 
-	return r.sdk.CustomFields().Update(ctx, entityType, []models.CustomField{field})
+	fields, _, err := r.sdk.CustomFields().Update(ctx, entityType, []*models.CustomField{field})
+	return fields, err
 }
 
 // ============================================================================
@@ -189,10 +192,9 @@ func (r *Registry) handleFieldGroups(ctx context.Context, input AdminSchemaInput
 	case "search":
 		return r.searchFieldGroups(ctx, svc, input.Filter)
 	case "get":
-		if input.GroupID == "" {
-			return nil, fmt.Errorf("group_id is required for action 'get'")
-		}
-		return svc.GetOne(ctx, input.GroupID)
+		// SDK баг: GetOne ожидает int ID, но CustomFieldGroup.ID — string
+		// TODO: Fix SDK BaseEntityTypeService to support string IDs
+		return nil, fmt.Errorf("field_groups.get is not supported (SDK incompatibility: string ID vs int ID)")
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'create'")
@@ -221,19 +223,9 @@ func (r *Registry) handleFieldGroups(ctx context.Context, input AdminSchemaInput
 }
 
 func (r *Registry) searchFieldGroups(ctx context.Context, svc *services.CustomFieldGroupsService, filter *SchemaFilter) ([]models.CustomFieldGroup, error) {
-	f := &services.CustomFieldGroupsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return svc.Get(ctx, f)
+	// CustomFieldGroupsService наследует BaseEntityTypeService — Get принимает url.Values
+	groups, _, err := svc.Get(ctx, nil)
+	return groups, err
 }
 
 func (r *Registry) createFieldGroup(ctx context.Context, svc *services.CustomFieldGroupsService, data map[string]any) ([]models.CustomFieldGroup, error) {
@@ -246,7 +238,8 @@ func (r *Registry) createFieldGroup(ctx context.Context, svc *services.CustomFie
 		group.Sort = int(sort)
 	}
 
-	return svc.Create(ctx, []models.CustomFieldGroup{group})
+	groups, _, err := svc.Create(ctx, []models.CustomFieldGroup{group})
+	return groups, err
 }
 
 func (r *Registry) updateFieldGroup(ctx context.Context, svc *services.CustomFieldGroupsService, groupID string, data map[string]any) ([]models.CustomFieldGroup, error) {
@@ -259,7 +252,8 @@ func (r *Registry) updateFieldGroup(ctx context.Context, svc *services.CustomFie
 		group.Sort = int(sort)
 	}
 
-	return svc.Update(ctx, []models.CustomFieldGroup{group})
+	groups, _, err := svc.Update(ctx, []models.CustomFieldGroup{group})
+	return groups, err
 }
 
 // ============================================================================
@@ -292,7 +286,7 @@ func (r *Registry) handleLossReasons(ctx context.Context, input AdminSchemaInput
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'delete'")
 		}
-		err := r.sdk.LossReasons().Delete(ctx, input.ID)
+		err := r.sdk.LossReasons().DeleteOne(ctx, input.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -302,40 +296,26 @@ func (r *Registry) handleLossReasons(ctx context.Context, input AdminSchemaInput
 	}
 }
 
-func (r *Registry) searchLossReasons(ctx context.Context, filter *SchemaFilter) ([]models.LossReason, error) {
-	f := &services.LossReasonsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.LossReasons().Get(ctx, f)
+func (r *Registry) searchLossReasons(ctx context.Context, filter *SchemaFilter) ([]*models.LossReason, error) {
+	// LossReasonsService наследует BaseEntityService — Get принимает url.Values
+	reasons, _, err := r.sdk.LossReasons().Get(ctx, nil)
+	return reasons, err
 }
 
-func (r *Registry) createLossReason(ctx context.Context, data map[string]any) ([]models.LossReason, error) {
-	reason := models.LossReason{}
+func (r *Registry) createLossReason(ctx context.Context, data map[string]any) ([]*models.LossReason, error) {
+	reason := &models.LossReason{}
 
 	if name, ok := data["name"].(string); ok {
 		reason.Name = name
 	}
 
-	return r.sdk.LossReasons().Create(ctx, []models.LossReason{reason})
+	reasons, _, err := r.sdk.LossReasons().Create(ctx, []*models.LossReason{reason})
+	return reasons, err
 }
 
-func (r *Registry) updateLossReason(ctx context.Context, id int, data map[string]any) ([]models.LossReason, error) {
-	reason := models.LossReason{ID: id}
-
-	if name, ok := data["name"].(string); ok {
-		reason.Name = name
-	}
-
-	return r.sdk.LossReasons().Update(ctx, []models.LossReason{reason})
+func (r *Registry) updateLossReason(ctx context.Context, id int, data map[string]any) ([]*models.LossReason, error) {
+	// LossReasons Update не поддерживается в SDK (возвращает ErrNotAvailableForAction)
+	return nil, fmt.Errorf("update not supported for loss_reasons")
 }
 
 // ============================================================================
@@ -378,24 +358,14 @@ func (r *Registry) handleSources(ctx context.Context, input AdminSchemaInput) (a
 	}
 }
 
-func (r *Registry) searchSources(ctx context.Context, filter *SchemaFilter) ([]models.Source, error) {
-	f := &services.SourcesFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.Sources().Get(ctx, f)
+func (r *Registry) searchSources(ctx context.Context, filter *SchemaFilter) ([]*models.Source, error) {
+	// SourcesFilter не поддерживает pagination
+	sources, _, err := r.sdk.Sources().Get(ctx, nil)
+	return sources, err
 }
 
-func (r *Registry) createSource(ctx context.Context, data map[string]any) ([]models.Source, error) {
-	source := models.Source{}
+func (r *Registry) createSource(ctx context.Context, data map[string]any) ([]*models.Source, error) {
+	source := &models.Source{}
 
 	if name, ok := data["name"].(string); ok {
 		source.Name = name
@@ -407,11 +377,12 @@ func (r *Registry) createSource(ctx context.Context, data map[string]any) ([]mod
 		source.PipelineID = int(pipelineID)
 	}
 
-	return r.sdk.Sources().Create(ctx, []models.Source{source})
+	sources, _, err := r.sdk.Sources().Create(ctx, []*models.Source{source})
+	return sources, err
 }
 
-func (r *Registry) updateSource(ctx context.Context, id int, data map[string]any) ([]models.Source, error) {
-	source := models.Source{ID: id}
+func (r *Registry) updateSource(ctx context.Context, id int, data map[string]any) ([]*models.Source, error) {
+	source := &models.Source{ID: id}
 
 	if name, ok := data["name"].(string); ok {
 		source.Name = name
@@ -420,5 +391,6 @@ func (r *Registry) updateSource(ctx context.Context, id int, data map[string]any
 		source.ExternalID = externalID
 	}
 
-	return r.sdk.Sources().Update(ctx, []models.Source{source})
+	sources, _, err := r.sdk.Sources().Update(ctx, []*models.Source{source})
+	return sources, err
 }

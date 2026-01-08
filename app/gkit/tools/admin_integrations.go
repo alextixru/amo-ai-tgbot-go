@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
@@ -78,7 +79,7 @@ func (r *Registry) handleAdminIntegrations(ctx context.Context, input AdminInteg
 
 func (r *Registry) handleWebhooks(ctx context.Context, input AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listWebhooks(ctx, input.Filter)
 	case "subscribe":
 		if input.Data == nil {
@@ -96,19 +97,9 @@ func (r *Registry) handleWebhooks(ctx context.Context, input AdminIntegrationsIn
 }
 
 func (r *Registry) listWebhooks(ctx context.Context, filter *IntegrationsFilter) ([]models.Webhook, error) {
-	f := &services.WebhooksFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	return r.sdk.Webhooks().Get(ctx, f)
+	// WebhooksFilter не поддерживает pagination в SDK
+	webhooks, _, err := r.sdk.Webhooks().Get(ctx, nil)
+	return webhooks, err
 }
 
 func (r *Registry) subscribeWebhook(ctx context.Context, data map[string]any) (*models.Webhook, error) {
@@ -148,18 +139,18 @@ func (r *Registry) unsubscribeWebhook(ctx context.Context, data map[string]any) 
 
 func (r *Registry) handleWidgets(ctx context.Context, input AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listWidgets(ctx, input.Filter)
 	case "get":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for action 'get'")
 		}
-		return r.sdk.Widgets().GetOne(ctx, input.Code)
+		return r.sdk.Widgets().GetByCode(ctx, input.Code)
 	case "install":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for action 'install'")
 		}
-		return r.sdk.Widgets().Install(ctx, input.Code)
+		return r.sdk.Widgets().InstallByCode(ctx, input.Code)
 	case "uninstall":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for action 'uninstall'")
@@ -174,20 +165,20 @@ func (r *Registry) handleWidgets(ctx context.Context, input AdminIntegrationsInp
 	}
 }
 
-func (r *Registry) listWidgets(ctx context.Context, filter *IntegrationsFilter) ([]models.Widget, error) {
-	f := &services.WidgetsFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) listWidgets(ctx context.Context, filter *IntegrationsFilter) ([]*models.Widget, error) {
+	f := filters.NewWidgetsFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 	}
-	return r.sdk.Widgets().Get(ctx, f)
+	widgets, _, err := r.sdk.Widgets().Get(ctx, f)
+	return widgets, err
 }
 
 // ============================================================================
@@ -196,7 +187,7 @@ func (r *Registry) listWidgets(ctx context.Context, filter *IntegrationsFilter) 
 
 func (r *Registry) handleWebsiteButtons(ctx context.Context, input AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listWebsiteButtons(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
@@ -208,7 +199,7 @@ func (r *Registry) handleWebsiteButtons(ctx context.Context, input AdminIntegrat
 	}
 }
 
-func (r *Registry) listWebsiteButtons(ctx context.Context, filter *IntegrationsFilter) ([]models.WebsiteButton, error) {
+func (r *Registry) listWebsiteButtons(ctx context.Context, filter *IntegrationsFilter) ([]*models.WebsiteButton, error) {
 	f := &services.WebsiteButtonsFilter{
 		Limit: 50,
 		Page:  1,
@@ -221,7 +212,8 @@ func (r *Registry) listWebsiteButtons(ctx context.Context, filter *IntegrationsF
 			f.Page = filter.Page
 		}
 	}
-	return r.sdk.WebsiteButtons().Get(ctx, f, nil)
+	buttons, _, err := r.sdk.WebsiteButtons().Get(ctx, f, nil)
+	return buttons, err
 }
 
 // ============================================================================
@@ -230,7 +222,7 @@ func (r *Registry) listWebsiteButtons(ctx context.Context, filter *IntegrationsF
 
 func (r *Registry) handleChatTemplates(ctx context.Context, input AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listChatTemplates(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
@@ -264,24 +256,24 @@ func (r *Registry) handleChatTemplates(ctx context.Context, input AdminIntegrati
 	}
 }
 
-func (r *Registry) listChatTemplates(ctx context.Context, filter *IntegrationsFilter) ([]services.ChatTemplate, error) {
-	f := &services.ChatTemplatesFilter{
-		Limit: 50,
-		Page:  1,
-	}
+func (r *Registry) listChatTemplates(ctx context.Context, filter *IntegrationsFilter) ([]*models.ChatTemplate, error) {
+	f := filters.NewTemplatesFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 	}
-	return r.sdk.ChatTemplates().Get(ctx, f)
+	templates, _, err := r.sdk.ChatTemplates().Get(ctx, f)
+	return templates, err
 }
 
-func (r *Registry) createChatTemplate(ctx context.Context, data map[string]any) ([]services.ChatTemplate, error) {
-	template := services.ChatTemplate{}
+func (r *Registry) createChatTemplate(ctx context.Context, data map[string]any) ([]*models.ChatTemplate, error) {
+	template := &models.ChatTemplate{}
 
 	if name, ok := data["name"].(string); ok {
 		template.Name = name
@@ -290,11 +282,12 @@ func (r *Registry) createChatTemplate(ctx context.Context, data map[string]any) 
 		template.Content = content
 	}
 
-	return r.sdk.ChatTemplates().Create(ctx, []services.ChatTemplate{template})
+	templates, _, err := r.sdk.ChatTemplates().Create(ctx, []*models.ChatTemplate{template})
+	return templates, err
 }
 
-func (r *Registry) updateChatTemplate(ctx context.Context, id int, data map[string]any) ([]services.ChatTemplate, error) {
-	template := services.ChatTemplate{ID: id}
+func (r *Registry) updateChatTemplate(ctx context.Context, id int, data map[string]any) ([]*models.ChatTemplate, error) {
+	template := &models.ChatTemplate{ID: id}
 
 	if name, ok := data["name"].(string); ok {
 		template.Name = name
@@ -303,7 +296,8 @@ func (r *Registry) updateChatTemplate(ctx context.Context, id int, data map[stri
 		template.Content = content
 	}
 
-	return r.sdk.ChatTemplates().Update(ctx, []services.ChatTemplate{template})
+	templates, _, err := r.sdk.ChatTemplates().Update(ctx, []*models.ChatTemplate{template})
+	return templates, err
 }
 
 // ============================================================================
@@ -312,7 +306,7 @@ func (r *Registry) updateChatTemplate(ctx context.Context, id int, data map[stri
 
 func (r *Registry) handleShortLinks(ctx context.Context, input AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list":
+	case "list", "search":
 		return r.listShortLinks(ctx, input.Filter)
 	case "create":
 		if input.Data == nil {
@@ -334,19 +328,19 @@ func (r *Registry) handleShortLinks(ctx context.Context, input AdminIntegrations
 }
 
 func (r *Registry) listShortLinks(ctx context.Context, filter *IntegrationsFilter) ([]models.ShortLink, error) {
-	f := &services.ShortLinksFilter{
-		Limit: 50,
-		Page:  1,
-	}
+	f := filters.NewShortLinksFilter()
+	f.SetLimit(50)
+	f.SetPage(1)
 	if filter != nil {
 		if filter.Limit > 0 {
-			f.Limit = filter.Limit
+			f.SetLimit(filter.Limit)
 		}
 		if filter.Page > 0 {
-			f.Page = filter.Page
+			f.SetPage(filter.Page)
 		}
 	}
-	return r.sdk.ShortLinks().Get(ctx, f)
+	links, _, err := r.sdk.ShortLinks().Get(ctx, f)
+	return links, err
 }
 
 func (r *Registry) createShortLink(ctx context.Context, data map[string]any) ([]models.ShortLink, error) {
@@ -362,5 +356,6 @@ func (r *Registry) createShortLink(ctx context.Context, data map[string]any) ([]
 		link.EntityID = int(entityID)
 	}
 
-	return r.sdk.ShortLinks().Create(ctx, []models.ShortLink{link})
+	links, _, err := r.sdk.ShortLinks().Create(ctx, []models.ShortLink{link})
+	return links, err
 }
