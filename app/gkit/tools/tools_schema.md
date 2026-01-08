@@ -40,6 +40,9 @@ case "get":
 > Справочники НЕ являются отдельными Tools.
 > Данные из Reference автоматически вшиваются в контекст Tools.
 > LLM получает сведённые данные — не нужно вручную запрашивать справочники.
+>
+> Все Reference сервисы (включая редактируемые) используются как системная информация
+> для контекста запросов. Редактирование доступно через соответствующие `admin_*` tools.
 
 | Service                  | Данные                           | Вшивается в   |
 | ------------------------ | -------------------------------------- | ----------------------- |
@@ -62,7 +65,7 @@ case "get":
 
 **Services:** Leads, Contacts, Companies
 
-**Actions:** search, get, create, update, delete, link, unlink, get_chats, link_chats
+**Actions:** search, get, create, update, sync, delete, link, unlink, get_chats, link_chats
 
 ```json
 {
@@ -87,14 +90,14 @@ case "get":
 
 > **Layer-specific actions:**
 > - `tasks`: list, get, create, update, complete
-> - `notes`: list, get, create, update
+> - `notes`: list, get, get_by_parent, create, update
 > - `calls`: create (write-only, нет чтения через SDK)
 > - `events`: list, get (read-only)
 > - `files`: list, link, unlink
 > - `links`: list, link, unlink
-> - `tags`: list, create, link, unlink (delete не поддерживается API)
+> - `tags`: list, create, delete
 > - `subscriptions`: list, subscribe, unsubscribe
-> - `talks`: list, close
+> - `talks`: close (Get не поддерживается API)
 
 ```json
 {
@@ -139,6 +142,10 @@ case "get":
 **Что:** Работа с товарами (элементами каталога) + привязка к сущностям
 
 **Services:** ProductsService + Lead/Contact/Company (catalog_elements)
+
+> [!WARNING]
+> `ProductsService.Get/Create/Update` возвращают `ErrNotAvailableForAction`.
+> Используйте `CatalogsService` с catalog_id товарного каталога.
 
 **Actions:** search, get, create, update, delete, get_by_entity, link, unlink, update_quantity
 

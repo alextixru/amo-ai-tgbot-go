@@ -8,8 +8,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `GetCurrent` | `ctx context.Context, with []string` | `*models.Account, error` | get |
-| `AvailableWith` | - | `[]string` | list |
+| `GetCurrent` | `ctx context.Context, opts ...GetOneOption` | `*models.Account, error` | get |
 
 ---
 
@@ -17,8 +16,8 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Add` | `ctx context.Context, calls []models.Call` | `[]models.Call, error` | create |
-| `AddOne` | `ctx context.Context, call *models.Call` | `*models.Call, error` | create |
+| `Create` | `ctx context.Context, calls []*models.Call` | `[]*models.Call, *PageMeta, error` | create |
+| `CreateOne` | `ctx context.Context, call *models.Call` | `*models.Call, error` | create |
 
 ---
 
@@ -26,10 +25,12 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CatalogElementsFilter` | `[]models.CatalogElement, error` | list |
+| `Get` | `ctx context.Context, filter *CatalogElementsFilter` | `[]*models.CatalogElement, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, elementID int` | `*models.CatalogElement, error` | get |
-| `Create` | `ctx context.Context, elements []models.CatalogElement` | `[]models.CatalogElement, error` | create |
-| `Update` | `ctx context.Context, elements []models.CatalogElement` | `[]models.CatalogElement, error` | update |
+| `Create` | `ctx context.Context, elements []*models.CatalogElement` | `[]*models.CatalogElement, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, elements []*models.CatalogElement` | `[]*models.CatalogElement, *PageMeta, error` | update |
+| `Link` | `ctx context.Context, elementID int, entityType string, entityID int, metadata map[string]interface{}` | `error` | link |
+| `Unlink` | `ctx context.Context, elementID int, entityType string, entityID int` | `error` | unlink |
 
 ---
 
@@ -37,10 +38,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CatalogsFilter` | `[]models.Catalog, error` | list |
+| `Get` | `ctx context.Context, filter *CatalogsFilter` | `[]*models.Catalog, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Catalog, error` | get |
-| `Create` | `ctx context.Context, catalogs []models.Catalog` | `[]models.Catalog, error` | create |
-| `Update` | `ctx context.Context, catalogs []models.Catalog` | `[]models.Catalog, error` | update |
+| `Create` | `ctx context.Context, catalogs []*models.Catalog` | `[]*models.Catalog, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, catalogs []*models.Catalog` | `[]*models.Catalog, *PageMeta, error` | update |
 
 ---
 
@@ -48,12 +49,12 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *ChatTemplatesFilter` | `[]ChatTemplate, error` | list |
-| `Create` | `ctx context.Context, templates []ChatTemplate` | `[]ChatTemplate, error` | create |
-| `Update` | `ctx context.Context, templates []ChatTemplate` | `[]ChatTemplate, error` | update |
+| `Get` | `ctx context.Context, filter *ChatTemplatesFilter` | `[]*ChatTemplate, *PageMeta, error` | list |
+| `Create` | `ctx context.Context, templates []*ChatTemplate` | `[]*ChatTemplate, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, templates []*ChatTemplate` | `[]*ChatTemplate, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 | `DeleteMany` | `ctx context.Context, ids []int` | `error` | delete |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*ChatTemplate, error` | get |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*ChatTemplate, error` | get |
 | `SendOnReview` | `ctx context.Context, templateID int` | `[]ChatTemplateReview, error` | update |
 | `UpdateReviewStatus` | `ctx context.Context, templateID, reviewID int, status string` | `*ChatTemplateReview, error` | update |
 
@@ -63,12 +64,14 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CompaniesFilter` | `[]models.Company, error` | list |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*models.Company, error` | get |
-| `Create` | `ctx context.Context, companies []models.Company` | `[]models.Company, error` | create |
-| `Update` | `ctx context.Context, companies []models.Company` | `[]models.Company, error` | update |
+| `Get` | `ctx context.Context, filter *CompaniesFilter` | `[]*models.Company, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*models.Company, error` | get |
+| `Create` | `ctx context.Context, companies []*models.Company` | `[]*models.Company, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, companies []*models.Company` | `[]*models.Company, *PageMeta, error` | update |
+| `SyncOne` | `ctx context.Context, company *models.Company, with []string` | `*models.Company, error` | create/update |
 | `Link` | `ctx context.Context, companyID int, entityType string, entityID int, metadata map[string]interface{}` | `error` | link |
 | `Unlink` | `ctx context.Context, companyID int, entityType string, entityID int` | `error` | unlink |
+| `GetLinks` | `ctx context.Context, companyID int` | `[]models.EntityLink, error` | list |
 
 ---
 
@@ -76,12 +79,14 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *ContactsFilter` | `[]models.Contact, error` | list |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*models.Contact, error` | get |
-| `Create` | `ctx context.Context, contacts []models.Contact` | `[]models.Contact, error` | create |
-| `Update` | `ctx context.Context, contacts []models.Contact` | `[]models.Contact, error` | update |
+| `Get` | `ctx context.Context, filter *ContactsFilter` | `[]*models.Contact, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*models.Contact, error` | get |
+| `Create` | `ctx context.Context, contacts []*models.Contact` | `[]*models.Contact, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, contacts []*models.Contact` | `[]*models.Contact, *PageMeta, error` | update |
+| `SyncOne` | `ctx context.Context, contact *models.Contact, with []string` | `*models.Contact, error` | create/update |
 | `Link` | `ctx context.Context, contactID int, entityType string, entityID int, metadata map[string]interface{}` | `error` | link |
 | `Unlink` | `ctx context.Context, contactID int, entityType string, entityID int` | `error` | unlink |
+| `GetLinks` | `ctx context.Context, contactID int` | `[]models.EntityLink, error` | list |
 | `GetChats` | `ctx context.Context, contactID int` | `[]models.ChatLink, error` | list |
 | `LinkChats` | `ctx context.Context, links []models.ChatLink` | `[]models.ChatLink, error` | link |
 
@@ -91,7 +96,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CurrenciesFilter` | `[]models.Currency, error` | list |
+| `Get` | `ctx context.Context, filter *CurrenciesFilter` | `[]*models.Currency, *PageMeta, error` | list |
 
 ---
 
@@ -99,10 +104,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CustomFieldGroupsFilter` | `[]models.CustomFieldGroup, error` | list |
+| `Get` | `ctx context.Context, filter *CustomFieldGroupsFilter` | `[]*models.CustomFieldGroup, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id string` | `*models.CustomFieldGroup, error` | get |
-| `Create` | `ctx context.Context, groups []models.CustomFieldGroup` | `[]models.CustomFieldGroup, error` | create |
-| `Update` | `ctx context.Context, groups []models.CustomFieldGroup` | `[]models.CustomFieldGroup, error` | update |
+| `Create` | `ctx context.Context, groups []*models.CustomFieldGroup` | `[]*models.CustomFieldGroup, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, groups []*models.CustomFieldGroup` | `[]*models.CustomFieldGroup, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id string` | `error` | delete |
 
 ---
@@ -111,10 +116,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, entityType string, filter *CustomFieldsFilter` | `[]models.CustomField, error` | list |
+| `Get` | `ctx context.Context, entityType string, filter *CustomFieldsFilter` | `[]*models.CustomField, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, entityType string, id int` | `*models.CustomField, error` | get |
-| `Create` | `ctx context.Context, entityType string, fields []models.CustomField` | `[]models.CustomField, error` | create |
-| `Update` | `ctx context.Context, entityType string, fields []models.CustomField` | `[]models.CustomField, error` | update |
+| `Create` | `ctx context.Context, entityType string, fields []*models.CustomField` | `[]*models.CustomField, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, entityType string, fields []*models.CustomField` | `[]*models.CustomField, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, entityType string, id int` | `error` | delete |
 
 ---
@@ -133,10 +138,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, page, limit int` | `[]models.Status, error` | list |
+| `Get` | `ctx context.Context, page, limit int` | `[]*models.Status, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Status, error` | get |
-| `Create` | `ctx context.Context, statuses []models.Status` | `[]models.Status, error` | create |
-| `Update` | `ctx context.Context, statuses []models.Status` | `[]models.Status, error` | update |
+| `Create` | `ctx context.Context, statuses []*models.Status` | `[]*models.Status, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, statuses []*models.Status` | `[]*models.Status, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -145,8 +150,8 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *TransactionsFilter` | `[]Transaction, error` | list |
-| `Create` | `ctx context.Context, transactions []Transaction, accrueBonus bool` | `[]Transaction, error` | create |
+| `Get` | `ctx context.Context, filter *TransactionsFilter` | `[]*Transaction, *PageMeta, error` | list |
+| `Create` | `ctx context.Context, transactions []*Transaction, accrueBonus bool` | `[]*Transaction, *PageMeta, error` | create |
 | `Delete` | `ctx context.Context, transactionID int` | `error` | delete |
 
 ---
@@ -155,10 +160,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *CustomersFilter` | `[]models.Customer, error` | list |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*models.Customer, error` | get |
-| `Create` | `ctx context.Context, customers []models.Customer` | `[]models.Customer, error` | create |
-| `Update` | `ctx context.Context, customers []models.Customer` | `[]models.Customer, error` | update |
+| `Get` | `ctx context.Context, filter *CustomersFilter` | `[]*models.Customer, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*models.Customer, error` | get |
+| `Create` | `ctx context.Context, customers []*models.Customer` | `[]*models.Customer, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, customers []*models.Customer` | `[]*models.Customer, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 | `Link` | `ctx context.Context, customerID int, links []models.EntityLink` | `[]models.EntityLink, error` | link |
 
@@ -168,7 +173,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, page, limit int` | `[]models.FileLink, error` | list |
+| `Get` | `ctx context.Context, page, limit int` | `[]*models.FileLink, *PageMeta, error` | list |
 | `Link` | `ctx context.Context, fileUUIDs []string` | `[]models.FileLink, error` | link |
 | `Unlink` | `ctx context.Context, fileUUID string` | `error` | unlink |
 
@@ -178,7 +183,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, page, limit int` | `[]models.Subscription, error` | list |
+| `Get` | `ctx context.Context, page, limit int` | `[]*models.Subscription, *PageMeta, error` | list |
 | `Subscribe` | `ctx context.Context, userIDs []int` | `[]models.Subscription, error` | link |
 | `Unsubscribe` | `ctx context.Context, userID int` | `error` | unlink |
 
@@ -188,7 +193,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *EventTypesFilter` | `[]models.EventType, error` | list |
+| `Get` | `ctx context.Context, filter *EventTypesFilter` | `[]*models.EventType, *PageMeta, error` | list |
 
 ---
 
@@ -196,7 +201,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *EventsFilter` | `[]models.Event, error` | list |
+| `Get` | `ctx context.Context, filter *EventsFilter` | `[]*models.Event, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Event, error` | get |
 
 ---
@@ -205,9 +210,13 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *FilesFilter` | `[]models.File, error` | list |
-| `GetOne` | `ctx context.Context, uuid string` | `*models.File, error` | get |
-| `Delete` | `ctx context.Context, uuid string` | `error` | delete |
+| `Get` | `ctx context.Context, filter *FilesFilter` | `[]*models.File, *PageMeta, error` | list |
+| `GetOneByUUID` | `ctx context.Context, uuid string` | `*models.File, error` | get |
+| `Add` | `ctx context.Context, files []*models.File` | `[]*models.File, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, files []*models.File` | `[]*models.File, *PageMeta, error` | update |
+| `UpdateOne` | `ctx context.Context, file *models.File` | `*models.File, error` | update |
+| `Delete` | `ctx context.Context, collection *FilesCollection` | `error` | delete |
+| `DeleteOne` | `ctx context.Context, uuid string` | `error` | delete |
 | `UploadOne` | `ctx context.Context, params FileUploadParams` | `*models.File, error` | create |
 
 ---
@@ -216,18 +225,20 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *LeadsFilter` | `[]models.Lead, error` | list |
+| `Get` | `ctx context.Context, filter *LeadsFilter` | `[]*models.Lead, *PageMeta, error` | list |
 | `GetWithPagination` | `ctx context.Context, filter *LeadsFilter` | `*models.LeadsResponse, error` | list |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*models.Lead, error` | get |
-| `Create` | `ctx context.Context, leads []models.Lead` | `[]models.Lead, error` | create |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*models.Lead, error` | get |
+| `Create` | `ctx context.Context, leads []*models.Lead` | `[]*models.Lead, *PageMeta, error` | create |
 | `CreateOne` | `ctx context.Context, lead *models.Lead` | `*models.Lead, error` | create |
-| `Update` | `ctx context.Context, leads []models.Lead` | `[]models.Lead, error` | update |
+| `Update` | `ctx context.Context, leads []*models.Lead` | `[]*models.Lead, *PageMeta, error` | update |
 | `UpdateOne` | `ctx context.Context, lead *models.Lead` | `*models.Lead, error` | update |
+| `SyncOne` | `ctx context.Context, lead *models.Lead, with []string` | `*models.Lead, error` | create/update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 | `Link` | `ctx context.Context, leadID int, links []models.EntityLink` | `[]models.EntityLink, error` | link |
 | `Unlink` | `ctx context.Context, leadID int, links []models.EntityLink` | `error` | unlink |
-| `AddComplex` | `ctx context.Context, leads []models.Lead` | `[]ComplexLeadResult, error` | create |
+| `AddComplex` | `ctx context.Context, leads []*models.Lead` | `[]ComplexLeadResult, error` | create |
 | `AddOneComplex` | `ctx context.Context, lead *models.Lead` | `*ComplexLeadResult, error` | create |
+| `AddComplexInPlace` | `ctx context.Context, leads []*models.Lead` | `error` | create |
 
 ---
 
@@ -235,7 +246,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, entityType string, entityID int, filter *LinksFilter` | `[]models.EntityLink, error` | list |
+| `Get` | `ctx context.Context, entityType string, entityID int, filter *LinksFilter` | `[]*models.EntityLink, *PageMeta, error` | list |
 | `Link` | `ctx context.Context, entityType string, entityID int, links []models.EntityLink` | `[]models.EntityLink, error` | link |
 | `Unlink` | `ctx context.Context, entityType string, entityID int, links []models.EntityLink` | `error` | unlink |
 
@@ -245,10 +256,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *LossReasonsFilter` | `[]models.LossReason, error` | list |
+| `Get` | `ctx context.Context, filter *LossReasonsFilter` | `[]*models.LossReason, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.LossReason, error` | get |
-| `Create` | `ctx context.Context, reasons []models.LossReason` | `[]models.LossReason, error` | create |
-| `Update` | `ctx context.Context, reasons []models.LossReason` | `[]models.LossReason, error` | update |
+| `Create` | `ctx context.Context, reasons []*models.LossReason` | `[]*models.LossReason, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, reasons []*models.LossReason` | `[]*models.LossReason, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -257,11 +268,11 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, entityType string, filter *NotesFilter` | `[]models.Note, error` | list |
-| `GetByParent` | `ctx context.Context, entityType string, entityID int, filter *NotesFilter` | `[]models.Note, error` | list |
+| `Get` | `ctx context.Context, entityType string, filter *NotesFilter` | `[]*models.Note, *PageMeta, error` | list |
+| `GetByParent` | `ctx context.Context, entityType string, entityID int, filter *NotesFilter` | `[]*models.Note, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, entityType string, id int` | `*models.Note, error` | get |
-| `Create` | `ctx context.Context, entityType string, notes []models.Note` | `[]models.Note, error` | create |
-| `Update` | `ctx context.Context, entityType string, notes []models.Note` | `[]models.Note, error` | update |
+| `Create` | `ctx context.Context, entityType string, notes []*models.Note` | `[]*models.Note, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, entityType string, notes []*models.Note` | `[]*models.Note, *PageMeta, error` | update |
 
 ---
 
@@ -269,16 +280,32 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context` | `[]models.Pipeline, error` | list |
+| `Get` | `ctx context.Context` | `[]*models.Pipeline, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Pipeline, error` | get |
-| `Create` | `ctx context.Context, pipelines []models.Pipeline` | `[]models.Pipeline, error` | create |
-| `Update` | `ctx context.Context, pipelines []models.Pipeline` | `[]models.Pipeline, error` | update |
+| `Create` | `ctx context.Context, pipelines []*models.Pipeline` | `[]*models.Pipeline, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, pipelines []*models.Pipeline` | `[]*models.Pipeline, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
-| `GetStatuses` | `ctx context.Context, pipelineID int` | `[]models.Status, error` | list |
-| `GetStatus` | `ctx context.Context, pipelineID int, statusID int` | `*models.Status, error` | get |
-| `CreateStatus` | `ctx context.Context, pipelineID int, status *models.Status` | `*models.Status, error` | create |
-| `UpdateStatus` | `ctx context.Context, pipelineID int, status *models.Status` | `*models.Status, error` | update |
-| `DeleteStatus` | `ctx context.Context, pipelineID int, statusID int` | `error` | delete |
+
+**Примечание:** Для работы со статусами воронки используйте `sdk.Statuses(pipelineID)`.
+
+---
+
+## StatusesService (`core/services/statuses.go`)
+
+Сервис для управления статусами воронок. Доступен через `sdk.Statuses(pipelineID)`.
+
+| Method | Params | Returns | Operation |
+|--------|--------|---------|-----------|
+| `Get` | `ctx context.Context, params url.Values` | `[]*models.Status, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, id int, params url.Values` | `*models.Status, error` | get |
+| `Create` | `ctx context.Context, statuses []*models.Status` | `[]*models.Status, *PageMeta, error` | create |
+| `CreateOne` | `ctx context.Context, status *models.Status` | `*models.Status, error` | create |
+| `UpdateOne` | `ctx context.Context, status *models.Status` | `*models.Status, error` | update |
+| `DeleteOne` | `ctx context.Context, id int` | `error` | delete |
+
+**Примечания:**
+- `Update()` (batch) — возвращает `ErrNotAvailableForAction`
+- `Delete()` (batch) — возвращает `ErrNotAvailableForAction`
 
 ---
 
@@ -286,11 +313,16 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *ProductsFilter` | `[]models.CatalogElement, error` | list |
+| `Get` | `ctx context.Context, filter *ProductsFilter` | `[]*models.CatalogElement, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.CatalogElement, error` | get |
-| `Create` | `ctx context.Context, products []models.CatalogElement` | `[]models.CatalogElement, error` | create |
-| `Update` | `ctx context.Context, products []models.CatalogElement` | `[]models.CatalogElement, error` | update |
+| `Create` | `ctx context.Context, products []*models.CatalogElement` | `[]*models.CatalogElement, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, products []*models.CatalogElement` | `[]*models.CatalogElement, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, productIDs []int` | `error` | delete |
+
+**⚠️ Примечания:**
+- `Get`, `Create`, `Update` — возвращают `ErrNotAvailableForAction`
+- API не поддерживает прямую работу с товарами через ProductsService
+- Используйте `CatalogsService` с catalog_id товарного каталога
 
 ---
 
@@ -298,10 +330,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *RoleFilter` | `[]models.Role, error` | list |
-| `GetOne` | `ctx context.Context, id int, with []string` | `*models.Role, error` | get |
-| `Create` | `ctx context.Context, roles []models.Role` | `[]models.Role, error` | create |
-| `Update` | `ctx context.Context, roles []models.Role` | `[]models.Role, error` | update |
+| `Get` | `ctx context.Context, filter *RoleFilter` | `[]*models.Role, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, id int, opts ...GetOneOption` | `*models.Role, error` | get |
+| `Create` | `ctx context.Context, roles []*models.Role` | `[]*models.Role, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, roles []*models.Role` | `[]*models.Role, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -310,9 +342,9 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *SegmentsFilter` | `[]models.Segment, error` | list |
+| `Get` | `ctx context.Context, filter *SegmentsFilter` | `[]*models.Segment, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Segment, error` | get |
-| `Create` | `ctx context.Context, segments []models.Segment` | `[]models.Segment, error` | create |
+| `Create` | `ctx context.Context, segments []*models.Segment` | `[]*models.Segment, *PageMeta, error` | create |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -321,8 +353,8 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *ShortLinksFilter` | `[]models.ShortLink, error` | list |
-| `Create` | `ctx context.Context, links []models.ShortLink` | `[]models.ShortLink, error` | create |
+| `Get` | `ctx context.Context, filter *ShortLinksFilter` | `[]*models.ShortLink, *PageMeta, error` | list |
+| `Create` | `ctx context.Context, links []*models.ShortLink` | `[]*models.ShortLink, *PageMeta, error` | create |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -331,10 +363,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *SourcesFilter` | `[]models.Source, error` | list |
+| `Get` | `ctx context.Context, filter *SourcesFilter` | `[]*models.Source, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Source, error` | get |
-| `Create` | `ctx context.Context, sources []models.Source` | `[]models.Source, error` | create |
-| `Update` | `ctx context.Context, sources []models.Source` | `[]models.Source, error` | update |
+| `Create` | `ctx context.Context, sources []*models.Source` | `[]*models.Source, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, sources []*models.Source` | `[]*models.Source, *PageMeta, error` | update |
 | `Delete` | `ctx context.Context, id int` | `error` | delete |
 
 ---
@@ -343,8 +375,8 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, entityType string, filter *TagsFilter` | `[]models.Tag, error` | list |
-| `Create` | `ctx context.Context, entityType string, tags []models.Tag` | `[]models.Tag, error` | create |
+| `Get` | `ctx context.Context, entityType string, filter *TagsFilter` | `[]*models.Tag, *PageMeta, error` | list |
+| `Create` | `ctx context.Context, entityType string, tags []*models.Tag` | `[]*models.Tag, *PageMeta, error` | create |
 | `Delete` | `ctx context.Context, entityType string, tags []models.Tag` | `error` | delete |
 
 ---
@@ -353,8 +385,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *TalksFilter` | `[]models.Talk, error` | list |
+| `Get` | `ctx context.Context, filter *TalksFilter` | `[]*models.Talk, *PageMeta, error` | list |
 | `Close` | `ctx context.Context, talkID string` | `error` | update |
+
+**⚠️ Примечание:** `Get` возвращает `ErrNotAvailableForAction` — API не поддерживает получение списка бесед
 
 ---
 
@@ -362,10 +396,10 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *TasksFilter` | `[]models.Task, error` | list |
+| `Get` | `ctx context.Context, filter *TasksFilter` | `[]*models.Task, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.Task, error` | get |
-| `Create` | `ctx context.Context, tasks []models.Task` | `[]models.Task, error` | create |
-| `Update` | `ctx context.Context, tasks []models.Task` | `[]models.Task, error` | update |
+| `Create` | `ctx context.Context, tasks []*models.Task` | `[]*models.Task, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, tasks []*models.Task` | `[]*models.Task, *PageMeta, error` | update |
 | `Complete` | `ctx context.Context, id int, resultText string` | `*models.Task, error` | update |
 
 ---
@@ -374,9 +408,9 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *UnsortedFilter` | `[]models.Unsorted, error` | list |
+| `Get` | `ctx context.Context, filter *UnsortedFilter` | `[]*models.Unsorted, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, uid string` | `*models.Unsorted, error` | get |
-| `Create` | `ctx context.Context, category string, unsorted []models.Unsorted` | `[]models.Unsorted, error` | create |
+| `Create` | `ctx context.Context, category string, unsorted []*models.Unsorted` | `[]*models.Unsorted, *PageMeta, error` | create |
 | `Accept` | `ctx context.Context, uid string, params map[string]interface{}` | `*models.UnsortedAcceptResult, error` | update |
 | `Decline` | `ctx context.Context, uid string, params map[string]interface{}` | `*models.UnsortedDeclineResult, error` | delete |
 | `Link` | `ctx context.Context, uid string, linkData map[string]interface{}` | `*models.UnsortedLinkResult, error` | link |
@@ -388,12 +422,9 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *UsersFilter` | `[]models.User, error` | list |
+| `Get` | `ctx context.Context, filter *UsersFilter` | `[]*models.User, *PageMeta, error` | list |
 | `GetOne` | `ctx context.Context, id int` | `*models.User, error` | get |
-| `Create` | `ctx context.Context, users []models.User` | `[]models.User, error` | create |
-| `AddToGroup` | `ctx context.Context, userID int, groupID int` | `error` | update |
-| `GetRoles` | `ctx context.Context, filter *RolesFilter` | `[]models.Role, error` | list |
-| `GetRole` | `ctx context.Context, id int` | `*models.Role, error` | get |
+| `Create` | `ctx context.Context, users []*models.User` | `[]*models.User, *PageMeta, error` | create |
 
 ---
 
@@ -401,7 +432,7 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *WebhooksFilter` | `[]models.Webhook, error` | list |
+| `Get` | `ctx context.Context, filter *WebhooksFilter` | `[]*models.Webhook, *PageMeta, error` | list |
 | `Subscribe` | `ctx context.Context, webhook *models.Webhook` | `*models.Webhook, error` | create |
 | `Unsubscribe` | `ctx context.Context, webhook *models.Webhook` | `error` | delete |
 
@@ -411,8 +442,8 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *WebsiteButtonsFilter, with []string` | `[]models.WebsiteButton, error` | list |
-| `GetOne` | `ctx context.Context, sourceID int, with []string` | `*models.WebsiteButton, error` | get |
+| `Get` | `ctx context.Context, filter *WebsiteButtonsFilter` | `[]*models.WebsiteButton, *PageMeta, error` | list |
+| `GetOne` | `ctx context.Context, sourceID int, opts ...GetOneOption` | `*models.WebsiteButton, error` | get |
 | `CreateAsync` | `ctx context.Context, request *models.WebsiteButtonCreateRequest` | `*models.WebsiteButtonCreateResponse, error` | create |
 | `UpdateAsync` | `ctx context.Context, request *models.WebsiteButtonUpdateRequest` | `*models.WebsiteButton, error` | update |
 | `AddOnlineChatAsync` | `ctx context.Context, sourceID int` | `error` | create |
@@ -423,9 +454,12 @@
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
-| `Get` | `ctx context.Context, filter *WidgetsFilter` | `[]models.Widget, error` | list |
-| `GetOne` | `ctx context.Context, code string` | `*models.Widget, error` | get |
-| `Install` | `ctx context.Context, code string` | `*models.Widget, error` | create |
+| `Get` | `ctx context.Context, filter *WidgetsFilter` | `[]*models.Widget, *PageMeta, error` | list |
+| `GetByCode` | `ctx context.Context, code string` | `*models.Widget, error` | get |
+| `Add` | `ctx context.Context, widgets []*models.Widget` | `[]*models.Widget, *PageMeta, error` | create |
+| `Update` | `ctx context.Context, widgets []*models.Widget` | `[]*models.Widget, *PageMeta, error` | update |
+| `Install` | `ctx context.Context, widget *models.Widget` | `*models.Widget, error` | create |
+| `InstallByCode` | `ctx context.Context, code string` | `*models.Widget, error` | create |
 | `Uninstall` | `ctx context.Context, code string` | `error` | delete |
 
 ---
