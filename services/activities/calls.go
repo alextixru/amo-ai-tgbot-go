@@ -9,7 +9,7 @@ import (
 
 // ============ CALLS ============
 
-func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Call, error) {
+func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.CallData) (*models.Call, error) {
 	call := models.Call{
 		EntityID:   parent.ID,
 		EntityType: parent.Type,
@@ -22,11 +22,11 @@ func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity
 	if data.Direction != "" {
 		call.Direction = models.CallDirection(data.Direction)
 	}
-	if data.UniqID != "" {
-		call.Uniq = data.UniqID
+	if data.UniqueID != "" {
+		call.Uniq = data.UniqueID
 	}
-	if data.Link != "" {
-		call.Link = data.Link
+	if data.RecordURL != "" {
+		call.Link = data.RecordURL
 	}
 	return s.sdk.Calls().CreateOne(ctx, &call)
 }

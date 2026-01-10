@@ -7,9 +7,10 @@ import (
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
+	"github.com/tihn/amo-ai-tgbot-go/utils"
 )
 
-func (s *service) ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity, filter *gkitmodels.ActivityFilter) ([]*models.Task, error) {
+func (s *service) ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity, filter *gkitmodels.TasksFilter) ([]*models.Task, error) {
 	f := filters.NewTasksFilter()
 	if filter != nil && filter.Limit > 0 {
 		f.SetLimit(filter.Limit)
@@ -29,13 +30,8 @@ func (s *service) ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity
 		if filter.IsCompleted != nil {
 			f.SetIsCompleted(*filter.IsCompleted)
 		}
-		if len(filter.TaskTypeID) > 0 {
-			// SDK expects int for SetTaskTypeID, but multiple IDs might not be supported by SDK filter directly
-			// Based on filter/tasks.go: f.TaskTypeID = &id
-			// We take the first one for now or we could use multi-task-type if API supports it (it usually doesn't in v4 filter[task_type_id])
-			if len(filter.TaskTypeID) > 0 {
-				f.SetTaskTypeID(filter.TaskTypeID[0])
-			}
+		if filter.TaskTypeID > 0 {
+			f.SetTaskTypeID(filter.TaskTypeID)
 		}
 	}
 
@@ -79,8 +75,25 @@ func (s *service) ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity
 			if taskTime.Before(todayStart) && (task.IsCompleted == false) {
 				include = true
 			}
-		case "future":
-			if taskTime.After(todayEnd) {
+		case "this_week":
+			// Monday to Sunday
+			weekday := int(now.Weekday())
+			if weekday == 0 {
+				weekday = 7
+			}
+			mondayStart := todayStart.AddDate(0, 0, -(weekday - 1))
+			sundayEnd := mondayStart.AddDate(0, 0, 7)
+			if taskTime.After(mondayStart) && taskTime.Before(sundayEnd) {
+				include = true
+			}
+		case "next_week":
+			weekday := int(now.Weekday())
+			if weekday == 0 {
+				weekday = 7
+			}
+			nextMondayStart := todayStart.AddDate(0, 0, -(weekday-1)+7)
+			nextSundayEnd := nextMondayStart.AddDate(0, 0, 7)
+			if taskTime.After(nextMondayStart) && taskTime.Before(nextSundayEnd) {
 				include = true
 			}
 		default:
@@ -99,21 +112,21 @@ func (s *service) GetTask(ctx context.Context, id int) (*models.Task, error) {
 	return s.sdk.Tasks().GetOne(ctx, id)
 }
 
-func (s *service) CreateTask(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Task, error) {
+func (s *service) CreateTask(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.TaskData) (*models.Task, error) {
 	task := &models.Task{
 		Text:       data.Text,
 		EntityID:   parent.ID,
 		EntityType: parent.Type,
 	}
-	if data.CompleteTillAt > 0 {
-		task.CompleteTill = &data.CompleteTillAt
-	} else if data.CompleteTill > 0 {
-		task.CompleteTill = &data.CompleteTill
+
+	if data.Deadline != "" {
+		if ts, err := utils.ParseHumanDeadline(data.Deadline); err == nil && ts > 0 {
+			task.CompleteTill = &ts
+		}
 	}
+
 	if data.TaskTypeID > 0 {
 		task.TaskTypeID = data.TaskTypeID
-	} else if data.TaskType > 0 {
-		task.TaskTypeID = data.TaskType
 	}
 	if data.ResponsibleUserID > 0 {
 		task.ResponsibleUserID = data.ResponsibleUserID
@@ -128,17 +141,17 @@ func (s *service) CreateTask(ctx context.Context, parent gkitmodels.ParentEntity
 	return nil, nil
 }
 
-func (s *service) UpdateTask(ctx context.Context, id int, data *gkitmodels.ActivityData) (*models.Task, error) {
+func (s *service) UpdateTask(ctx context.Context, id int, data *gkitmodels.TaskData) (*models.Task, error) {
 	task := &models.Task{
 		BaseModel: models.BaseModel{ID: id},
 	}
 	if data.Text != "" {
 		task.Text = data.Text
 	}
-	if data.CompleteTillAt > 0 {
-		task.CompleteTill = &data.CompleteTillAt
-	} else if data.CompleteTill > 0 {
-		task.CompleteTill = &data.CompleteTill
+	if data.Deadline != "" {
+		if ts, err := utils.ParseHumanDeadline(data.Deadline); err == nil && ts > 0 {
+			task.CompleteTill = &ts
+		}
 	}
 	tasks, _, err := s.sdk.Tasks().Update(ctx, []*models.Task{task})
 	if err != nil {

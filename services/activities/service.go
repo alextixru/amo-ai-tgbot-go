@@ -11,20 +11,20 @@ import (
 // Service определяет бизнес-логику для работы с активностями amoCRM.
 type Service interface {
 	// Tasks
-	ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity, filter *gkitmodels.ActivityFilter) ([]*models.Task, error)
+	ListTasks(ctx context.Context, parent *gkitmodels.ParentEntity, filter *gkitmodels.TasksFilter) ([]*models.Task, error)
 	GetTask(ctx context.Context, id int) (*models.Task, error)
-	CreateTask(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Task, error)
-	UpdateTask(ctx context.Context, id int, data *gkitmodels.ActivityData) (*models.Task, error)
+	CreateTask(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.TaskData) (*models.Task, error)
+	UpdateTask(ctx context.Context, id int, data *gkitmodels.TaskData) (*models.Task, error)
 	CompleteTask(ctx context.Context, id int, resultText string) (*models.Task, error)
 
 	// Notes
 	ListNotes(ctx context.Context, parent gkitmodels.ParentEntity) ([]*models.Note, error)
 	GetNote(ctx context.Context, entityType string, id int) (*models.Note, error)
-	CreateNote(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Note, error)
-	UpdateNote(ctx context.Context, entityType string, id int, data *gkitmodels.ActivityData) (*models.Note, error)
+	CreateNote(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.NoteData) (*models.Note, error)
+	UpdateNote(ctx context.Context, entityType string, id int, data *gkitmodels.NoteData) (*models.Note, error)
 
 	// Calls
-	CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Call, error)
+	CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.CallData) (*models.Call, error)
 
 	// Events
 	ListEvents(ctx context.Context, parent gkitmodels.ParentEntity) ([]*models.Event, error)

@@ -68,21 +68,21 @@ func (r *Registry) handleTasks(ctx context.Context, input models.ActivitiesInput
 		}
 		return r.activitiesService.GetTask(ctx, input.ID)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required")
+		if input.TaskData == nil {
+			return nil, fmt.Errorf("task_data is required")
 		}
 		if input.Parent == nil {
 			return nil, fmt.Errorf("parent is required for create")
 		}
-		return r.activitiesService.CreateTask(ctx, *input.Parent, input.Data)
+		return r.activitiesService.CreateTask(ctx, *input.Parent, input.TaskData)
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required")
+		if input.TaskData == nil {
+			return nil, fmt.Errorf("task_data is required")
 		}
-		return r.activitiesService.UpdateTask(ctx, input.ID, input.Data)
+		return r.activitiesService.UpdateTask(ctx, input.ID, input.TaskData)
 	case "complete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
@@ -106,18 +106,18 @@ func (r *Registry) handleNotes(ctx context.Context, input models.ActivitiesInput
 		}
 		return r.activitiesService.GetNote(ctx, input.Parent.Type, input.ID)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required")
+		if input.NoteData == nil {
+			return nil, fmt.Errorf("note_data is required")
 		}
-		return r.activitiesService.CreateNote(ctx, *input.Parent, input.Data)
+		return r.activitiesService.CreateNote(ctx, *input.Parent, input.NoteData)
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required")
+		if input.NoteData == nil {
+			return nil, fmt.Errorf("note_data is required")
 		}
-		return r.activitiesService.UpdateNote(ctx, input.Parent.Type, input.ID, input.Data)
+		return r.activitiesService.UpdateNote(ctx, input.Parent.Type, input.ID, input.NoteData)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
@@ -130,10 +130,10 @@ func (r *Registry) handleCalls(ctx context.Context, input models.ActivitiesInput
 	if input.Parent == nil {
 		return nil, fmt.Errorf("parent is required for calls")
 	}
-	if input.Data == nil {
-		return nil, fmt.Errorf("data is required")
+	if input.CallData == nil {
+		return nil, fmt.Errorf("call_data is required")
 	}
-	return r.activitiesService.CreateCall(ctx, *input.Parent, input.Data)
+	return r.activitiesService.CreateCall(ctx, *input.Parent, input.CallData)
 }
 
 func (r *Registry) handleEvents(ctx context.Context, input models.ActivitiesInput) (any, error) {
@@ -200,17 +200,38 @@ func (r *Registry) handleLinks(ctx context.Context, input models.ActivitiesInput
 func (r *Registry) handleTags(ctx context.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListTags(ctx, input.Parent.Type)
+		entityType := ""
+		if input.Parent != nil {
+			entityType = input.Parent.Type
+		}
+		if entityType == "" {
+			return nil, fmt.Errorf("parent.type or entity_type is required")
+		}
+		return r.activitiesService.ListTags(ctx, entityType)
 	case "create":
-		if input.Data == nil || input.Data.TagName == "" {
-			return nil, fmt.Errorf("data.tag_name is required")
+		entityType := ""
+		if input.Parent != nil {
+			entityType = input.Parent.Type
 		}
-		return r.activitiesService.CreateTag(ctx, input.Parent.Type, input.Data.TagName)
+		if entityType == "" {
+			return nil, fmt.Errorf("parent.type is required")
+		}
+		if input.TagName == "" {
+			return nil, fmt.Errorf("tag_name is required")
+		}
+		return r.activitiesService.CreateTag(ctx, entityType, input.TagName)
 	case "delete":
-		if input.Data == nil || input.Data.TagID == 0 {
-			return nil, fmt.Errorf("data.tag_id is required")
+		entityType := ""
+		if input.Parent != nil {
+			entityType = input.Parent.Type
 		}
-		return nil, r.activitiesService.DeleteTag(ctx, input.Parent.Type, input.Data.TagID)
+		if entityType == "" {
+			return nil, fmt.Errorf("parent.type is required")
+		}
+		if input.TagID == 0 {
+			return nil, fmt.Errorf("tag_id is required")
+		}
+		return nil, r.activitiesService.DeleteTag(ctx, entityType, input.TagID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}

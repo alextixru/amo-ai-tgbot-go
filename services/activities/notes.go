@@ -20,7 +20,7 @@ func (s *service) GetNote(ctx context.Context, entityType string, id int) (*mode
 	return s.sdk.Notes().GetOne(ctx, entityType, id, nil)
 }
 
-func (s *service) CreateNote(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.ActivityData) (*models.Note, error) {
+func (s *service) CreateNote(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.NoteData) (*models.Note, error) {
 	note := &models.Note{
 		EntityID: parent.ID,
 		Params: &models.NoteParams{
@@ -42,7 +42,7 @@ func (s *service) CreateNote(ctx context.Context, parent gkitmodels.ParentEntity
 	return nil, nil
 }
 
-func (s *service) UpdateNote(ctx context.Context, entityType string, id int, data *gkitmodels.ActivityData) (*models.Note, error) {
+func (s *service) UpdateNote(ctx context.Context, entityType string, id int, data *gkitmodels.NoteData) (*models.Note, error) {
 	note := &models.Note{
 		BaseModel: models.BaseModel{ID: id},
 		Params: &models.NoteParams{
