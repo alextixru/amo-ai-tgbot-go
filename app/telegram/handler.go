@@ -83,8 +83,9 @@ func (h *Handler) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 
 	h.debugLog("📤 Sending response (%d chars)...", len(response))
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   response,
+		ChatID:    chatID,
+		Text:      response,
+		ParseMode: models.ParseModeHTML,
 	})
 	if err != nil {
 		log.Printf("❌ SendMessage error: %v", err)

@@ -1,64 +1,95 @@
-// Package tools provides Genkit tool definitions for amoCRM SDK operations.
-// These tools enable LLM to interact with amoCRM through structured tool calling.
 package tools
 
 import (
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
-
-	amocrm "github.com/alextixru/amocrm-sdk-go"
+	"github.com/tihn/amo-ai-tgbot-go/services/activities"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_integrations"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_pipelines"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_schema"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_users"
+	"github.com/tihn/amo-ai-tgbot-go/services/catalogs"
+	"github.com/tihn/amo-ai-tgbot-go/services/complex_create"
+	"github.com/tihn/amo-ai-tgbot-go/services/customers"
+	"github.com/tihn/amo-ai-tgbot-go/services/entities"
+	"github.com/tihn/amo-ai-tgbot-go/services/files"
+	"github.com/tihn/amo-ai-tgbot-go/services/products"
+	"github.com/tihn/amo-ai-tgbot-go/services/unsorted"
 )
 
-// Registry holds all registered Genkit tools and provides access to SDK.
 type Registry struct {
-	g     *genkit.Genkit
-	sdk   *amocrm.SDK
+	g *genkit.Genkit
+
+	entitiesService          entities.Service
+	activitiesService        activities.Service
+	complexCreateService     complex_create.Service
+	productsService          products.Service
+	catalogsService          catalogs.Service
+	filesService             files.Service
+	unsortedService          unsorted.Service
+	customersService         customers.Service
+	adminSchemaService       admin_schema.Service
+	adminPipelinesService    admin_pipelines.Service
+	adminUsersService        admin_users.Service
+	adminIntegrationsService admin_integrations.Service
+
 	tools []ai.ToolRef
 }
 
-// NewRegistry creates a new tool registry.
-func NewRegistry(g *genkit.Genkit, sdk *amocrm.SDK) *Registry {
+func NewRegistry(
+	g *genkit.Genkit,
+	entitiesService entities.Service,
+	activitiesService activities.Service,
+	complexCreateService complex_create.Service,
+	productsService products.Service,
+	catalogsService catalogs.Service,
+	filesService files.Service,
+	unsortedService unsorted.Service,
+	customersService customers.Service,
+	adminSchemaService admin_schema.Service,
+	adminPipelinesService admin_pipelines.Service,
+	adminUsersService admin_users.Service,
+	adminIntegrationsService admin_integrations.Service,
+) *Registry {
 	return &Registry{
-		g:     g,
-		sdk:   sdk,
-		tools: make([]ai.ToolRef, 0),
+		g:                        g,
+		entitiesService:          entitiesService,
+		activitiesService:        activitiesService,
+		complexCreateService:     complexCreateService,
+		productsService:          productsService,
+		catalogsService:          catalogsService,
+		filesService:             filesService,
+		unsortedService:          unsortedService,
+		customersService:         customersService,
+		adminSchemaService:       adminSchemaService,
+		adminPipelinesService:    adminPipelinesService,
+		adminUsersService:        adminUsersService,
+		adminIntegrationsService: adminIntegrationsService,
+		tools:                    make([]ai.ToolRef, 0),
 	}
 }
 
-// RegisterAll registers all CRM tools and returns the registry.
-// TODO: Register 12 unified tools (entities, activities, complex_create, etc.)
-func (r *Registry) RegisterAll() *Registry {
-	r.registerEntitiesTool()
-	r.registerActivitiesTool()
-	r.registerComplexCreateTool()
-	r.registerProductsTool()
-	r.registerCatalogsTool()
-	r.registerFilesTool()
-	r.registerUnsortedTool()
-	r.registerCustomersTool()
-	r.registerAdminSchemaTool()
-	r.registerAdminPipelinesTool()
-	r.registerAdminUsersTool()
-	r.registerAdminIntegrationsTool()
-	return r
+func (r *Registry) RegisterAll() {
+	r.RegisterEntitiesTool()
+	r.RegisterActivitiesTool()
+	r.RegisterComplexCreateTool()
+	r.RegisterProductsTool()
+	r.RegisterCatalogsTool()
+	r.RegisterFilesTool()
+	r.RegisterUnsortedTool()
+	r.RegisterCustomersTool()
+	r.RegisterAdminSchemaTool()
+	r.RegisterAdminPipelinesTool()
+	r.RegisterAdminUsersTool()
+	r.RegisterAdminIntegrationsTool()
 }
 
-// AllTools returns all registered tools for use with ai.WithTools().
+// AllTools возвращает все зарегистрированные инструменты
 func (r *Registry) AllTools() []ai.ToolRef {
 	return r.tools
 }
 
-// addTool adds a tool to the registry.
+// addTool добавляет инструмент в список
 func (r *Registry) addTool(tool ai.Tool) {
 	r.tools = append(r.tools, tool)
-}
-
-// G returns the Genkit instance.
-func (r *Registry) G() *genkit.Genkit {
-	return r.g
-}
-
-// SDK returns the amoCRM SDK instance.
-func (r *Registry) SDK() *amocrm.SDK {
-	return r.sdk
 }

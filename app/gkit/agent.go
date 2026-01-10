@@ -11,6 +11,18 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/session"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/tools"
 	genkitClient "github.com/tihn/amo-ai-tgbot-go/infrastructure/genkit"
+	"github.com/tihn/amo-ai-tgbot-go/services/activities"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_integrations"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_pipelines"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_schema"
+	"github.com/tihn/amo-ai-tgbot-go/services/admin_users"
+	"github.com/tihn/amo-ai-tgbot-go/services/catalogs"
+	"github.com/tihn/amo-ai-tgbot-go/services/complex_create"
+	"github.com/tihn/amo-ai-tgbot-go/services/customers"
+	"github.com/tihn/amo-ai-tgbot-go/services/entities"
+	"github.com/tihn/amo-ai-tgbot-go/services/files"
+	"github.com/tihn/amo-ai-tgbot-go/services/products"
+	"github.com/tihn/amo-ai-tgbot-go/services/unsorted"
 )
 
 // Agent handles AI processing with Genkit flows
@@ -28,8 +40,37 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 	// Создаём session store для истории диалогов
 	store := session.NewMemoryStore()
 
-	// Регистрируем все tools (видны в Genkit UI)
-	registry := tools.NewRegistry(g, sdk).RegisterAll()
+	// Инициализируем сервисы
+	entitiesSvc := entities.New(sdk)
+	activitiesSvc := activities.New(sdk)
+	complexCreateSvc := complex_create.NewService(sdk)
+	productsSvc := products.NewService(sdk)
+	catalogsSvc := catalogs.NewService(sdk)
+	filesSvc := files.NewService(sdk)
+	unsortedSvc := unsorted.NewService(sdk)
+	customersSvc := customers.NewService(sdk)
+	adminSchemaSvc := admin_schema.NewService(sdk)
+	adminPipelinesSvc := admin_pipelines.New(sdk)
+	adminUsersSvc := admin_users.NewService(sdk)
+	adminIntegrationsSvc := admin_integrations.NewService(sdk)
+
+	// Регистрируем все tools через новый транспортный слой
+	registry := tools.NewRegistry(
+		g,
+		entitiesSvc,
+		activitiesSvc,
+		complexCreateSvc,
+		productsSvc,
+		catalogsSvc,
+		filesSvc,
+		unsortedSvc,
+		customersSvc,
+		adminSchemaSvc,
+		adminPipelinesSvc,
+		adminUsersSvc,
+		adminIntegrationsSvc,
+	)
+	registry.RegisterAll()
 
 	// Регистрируем Chat Flow с tools и session store
 	chatRunner := flows.DefineChatFlow(g, model, registry.AllTools(), store)

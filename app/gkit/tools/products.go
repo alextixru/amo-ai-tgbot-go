@@ -7,79 +7,79 @@ import (
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
 )
 
-// ProductsInput входные параметры для инструмента products
-type ProductsInput struct {
-	// Action действие: search, get, create, update, delete
-	Action string `json:"action" jsonschema_description:"Действие: search, get, create, update, delete"`
-
-	// ProductID ID товара (для get, update)
-	ProductID int `json:"product_id,omitempty" jsonschema_description:"ID товара (для get, update)"`
-
-	// Filter параметры поиска
-	Filter *ProductFilter `json:"filter,omitempty" jsonschema_description:"Фильтры поиска (для search)"`
-
-	// Data данные для создания/обновления
-	Data *ProductData `json:"data,omitempty" jsonschema_description:"Данные товара (для create, update)"`
-
-	// IDs массив ID для удаления
-	IDs []int `json:"ids,omitempty" jsonschema_description:"Массив ID товаров (для delete)"`
-}
-
-// ProductFilter фильтры поиска товаров
-type ProductFilter struct {
-	Query string `json:"query,omitempty" jsonschema_description:"Поисковый запрос"`
-	Limit int    `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Page  int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-}
-
-// ProductData данные товара
-type ProductData struct {
-	Name string `json:"name" jsonschema_description:"Название товара"`
-	SKU  string `json:"sku,omitempty" jsonschema_description:"Артикул"`
-}
-
-// registerProductsTool регистрирует инструмент для работы с товарами
-func (r *Registry) registerProductsTool() {
-	r.addTool(genkit.DefineTool[ProductsInput, any](
+func (r *Registry) RegisterProductsTool() {
+	r.addTool(genkit.DefineTool[gkitmodels.ProductsInput, any](
 		r.g,
 		"products",
-		"Работа с товарами amoCRM (каталог ID=1). "+
-			"⚠️ ВНИМАНИЕ: ProductsService.Get/Create/Update возвращают ErrNotAvailableForAction согласно API. "+
-			"Для работы с товарами используйте 'catalogs' tool с catalog_id товарного каталога вместо этого tool. "+
-			"Поддерживает: search (поиск, может не работать), get (получение по ID), create/update (недоступны), delete (удаление).",
-		func(ctx *ai.ToolContext, input ProductsInput) (any, error) {
+		"Работа с товарами (элементами каталога 'products'). "+
+			"Поддерживает: search (поиск), get (получение), create (создание), update (обновление), delete (удаление), "+
+			"get_by_entity (товары в сделке/контакте), link (привзяка к сущности), unlink (отвязка), "+
+			"update_quantity (обновление количества).",
+		func(ctx *ai.ToolContext, input gkitmodels.ProductsInput) (any, error) {
 			return r.handleProducts(ctx.Context, input)
 		},
 	))
 }
 
-func (r *Registry) handleProducts(ctx context.Context, input ProductsInput) (any, error) {
+func (r *Registry) handleProducts(ctx context.Context, input gkitmodels.ProductsInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.searchProducts(ctx, input.Filter)
+		return r.productsService.SearchProducts(ctx, input.Filter)
 	case "get":
-		return nil, fmt.Errorf("ProductsService.GetOne is not available. Please use 'catalogs' tool with your products catalog ID")
+		if input.ProductID == 0 {
+			return nil, fmt.Errorf("product_id is required for action 'get'")
+		}
+		return r.productsService.GetProduct(ctx, input.ProductID)
 	case "create":
-		return nil, fmt.Errorf("ProductsService.Create is not available. Please use 'catalogs' tool with your products catalog ID")
+		if input.Data == nil {
+			return nil, fmt.Errorf("data is required for action 'create'")
+		}
+		element := &models.CatalogElement{
+			Name: input.Data.Name,
+		}
+		if input.Data.SKU != "" {
+			// SKU обычно хранится в кастомных полях, но здесь мы просто мапим Имя
+			// В SDK CatalogElement имеет CustomFieldsValues
+		}
+		return r.productsService.CreateProducts(ctx, []*models.CatalogElement{element})
 	case "update":
-		return nil, fmt.Errorf("ProductsService.Update is not available. Please use 'catalogs' tool with your products catalog ID")
+		if input.ProductID == 0 || input.Data == nil {
+			return nil, fmt.Errorf("product_id and data are required for action 'update'")
+		}
+		element := &models.CatalogElement{}
+		element.ID = input.ProductID
+		element.Name = input.Data.Name
+		return r.productsService.UpdateProducts(ctx, []*models.CatalogElement{element})
 	case "delete":
-		return nil, fmt.Errorf("ProductsService.Delete is not available. Please use 'catalogs' tool with your products catalog ID")
+		if len(input.IDs) == 0 {
+			return nil, fmt.Errorf("ids array is required for action 'delete'")
+		}
+		return nil, r.productsService.DeleteProducts(ctx, input.IDs)
+	case "get_by_entity":
+		if input.Entity == nil {
+			return nil, fmt.Errorf("entity (type, id) is required for action 'get_by_entity'")
+		}
+		return r.productsService.GetProductsByEntity(ctx, input.Entity.Type, input.Entity.ID)
+	case "link":
+		if input.Entity == nil || input.Product == nil {
+			return nil, fmt.Errorf("entity and product are required for action 'link'")
+		}
+		return nil, r.productsService.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
+	case "unlink":
+		if input.Entity == nil || input.ProductID == 0 {
+			return nil, fmt.Errorf("entity and product_id are required for action 'unlink'")
+		}
+		return nil, r.productsService.UnlinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.ProductID)
+	case "update_quantity":
+		if input.Entity == nil || input.Product == nil {
+			return nil, fmt.Errorf("entity and product (id, quantity, price_id) are required for action 'update_quantity'")
+		}
+		// В amoCRM обновление количества — это просто повторный Link (Link в v4 обновляет metadata если связь уже есть)
+		return nil, r.productsService.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
-}
-
-func (r *Registry) searchProducts(ctx context.Context, filter *ProductFilter) ([]*models.CatalogElement, error) {
-	return nil, fmt.Errorf("ProductsService.Get is not available. Please use 'catalogs' tool with your products catalog ID")
-}
-
-func (r *Registry) createProduct(ctx context.Context, data *ProductData) ([]*models.CatalogElement, error) {
-	return nil, fmt.Errorf("ProductsService.Create is not available. Please use 'catalogs' tool with your products catalog ID")
-}
-
-func (r *Registry) updateProduct(ctx context.Context, id int, data *ProductData) ([]*models.CatalogElement, error) {
-	return nil, fmt.Errorf("ProductsService.Update is not available. Please use 'catalogs' tool with your products catalog ID")
 }

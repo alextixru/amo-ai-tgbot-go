@@ -1,182 +1,86 @@
 package tools
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 
-	"github.com/alextixru/amocrm-sdk-go/core/filters"
-	"github.com/alextixru/amocrm-sdk-go/core/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
+
+	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
 
-// AdminUsersInput входные параметры для инструмента admin_users
-type AdminUsersInput struct {
-	// Layer слой: users | roles
-	Layer string `json:"layer" jsonschema_description:"Слой: users (пользователи), roles (роли)"`
-
-	// Action действие
-	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update (только roles), delete (только roles)"`
-
-	// ID идентификатор пользователя или роли
-	ID int `json:"id,omitempty" jsonschema_description:"ID пользователя или роли"`
-
-	// Filter фильтры для list
-	Filter *AdminUsersFilter `json:"filter,omitempty" jsonschema_description:"Фильтры для поиска"`
-
-	// Data данные для create/update
-	Data map[string]any `json:"data,omitempty" jsonschema_description:"Данные для создания/обновления"`
-}
-
-// AdminUsersFilter фильтры для admin_users
-type AdminUsersFilter struct {
-	Limit int `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Page  int `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-}
-
-// registerAdminUsersTool регистрирует инструмент для управления пользователями и ролями
-func (r *Registry) registerAdminUsersTool() {
-	r.addTool(genkit.DefineTool[AdminUsersInput, any](
+func (r *Registry) RegisterAdminUsersTool() {
+	r.addTool(genkit.DefineTool[gkitmodels.AdminUsersInput, any](
 		r.g,
 		"admin_users",
-		"Управление пользователями и ролями amoCRM. "+
-			"Layers: users (пользователи), roles (роли). "+
-			"Users actions: list, get, create. Roles actions: list, get, create, update, delete. "+
-			"Note: Users API ограничен — update/delete пользователей недоступны.",
-		func(ctx *ai.ToolContext, input AdminUsersInput) (any, error) {
-			return r.handleAdminUsers(ctx.Context, input)
+		"Work with users and roles",
+		func(ctx *ai.ToolContext, input gkitmodels.AdminUsersInput) (any, error) {
+			switch input.Layer {
+			case "users":
+				return r.handleUsers(ctx, input)
+			case "roles":
+				return r.handleRoles(ctx, input)
+			default:
+				return nil, fmt.Errorf("unknown layer: %s", input.Layer)
+			}
 		},
 	))
 }
 
-func (r *Registry) handleAdminUsers(ctx context.Context, input AdminUsersInput) (any, error) {
-	switch input.Layer {
-	case "users":
-		return r.handleUsers(ctx, input)
-	case "roles":
-		return r.handleRoles(ctx, input)
-	default:
-		return nil, fmt.Errorf("unknown layer: %s (expected: users, roles)", input.Layer)
-	}
-}
-
-// ============================================================================
-// Users
-// ============================================================================
-
-func (r *Registry) handleUsers(ctx context.Context, input AdminUsersInput) (any, error) {
+func (r *Registry) handleUsers(ctx *ai.ToolContext, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.listUsers(ctx, input.Filter)
+		return r.adminUsersService.ListUsers(ctx)
 	case "get":
 		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'get'")
+			return nil, fmt.Errorf("id is required for get user")
 		}
-		return r.sdk.Users().GetOne(ctx, input.ID)
+		return r.adminUsersService.GetUser(ctx, input.ID)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+		var users []*amomodels.User
+		data, _ := json.Marshal(input.Data["users"])
+		if err := json.Unmarshal(data, &users); err != nil {
+			return nil, fmt.Errorf("failed to parse users: %w", err)
 		}
-		return r.createUser(ctx, input.Data)
+		return r.adminUsersService.CreateUsers(ctx, users)
+	case "update", "delete":
+		return nil, fmt.Errorf("action %s is not supported for users by amoCRM API", input.Action)
 	default:
-		return nil, fmt.Errorf("unknown action: %s for users (available: list, get, create)", input.Action)
+		return nil, fmt.Errorf("unknown action for users: %s", input.Action)
 	}
 }
 
-func (r *Registry) listUsers(ctx context.Context, filter *AdminUsersFilter) ([]*models.User, error) {
-	f := filters.NewUsersFilter()
-	f.SetLimit(50)
-	f.SetPage(1)
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.SetLimit(filter.Limit)
-		}
-		if filter.Page > 0 {
-			f.SetPage(filter.Page)
-		}
-	}
-	users, _, err := r.sdk.Users().Get(ctx, f)
-	return users, err
-}
-
-func (r *Registry) createUser(ctx context.Context, data map[string]any) ([]*models.User, error) {
-	user := &models.User{}
-
-	if name, ok := data["name"].(string); ok {
-		user.Name = name
-	}
-	if email, ok := data["email"].(string); ok {
-		user.Email = email
-	}
-
-	users, _, err := r.sdk.Users().Create(ctx, []*models.User{user})
-	return users, err
-}
-
-// ============================================================================
-// Roles
-// ============================================================================
-
-func (r *Registry) handleRoles(ctx context.Context, input AdminUsersInput) (any, error) {
+func (r *Registry) handleRoles(ctx *ai.ToolContext, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.listRoles(ctx, input.Filter)
+		return r.adminUsersService.ListRoles(ctx)
 	case "get":
 		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'get'")
+			return nil, fmt.Errorf("id is required for get role")
 		}
-		return r.sdk.Roles().GetOne(ctx, input.ID, nil)
+		return r.adminUsersService.GetRole(ctx, input.ID)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+		var roles []*amomodels.Role
+		data, _ := json.Marshal(input.Data["roles"])
+		if err := json.Unmarshal(data, &roles); err != nil {
+			return nil, fmt.Errorf("failed to parse roles: %w", err)
 		}
-		return r.createRole(ctx, input.Data)
+		return r.adminUsersService.CreateRoles(ctx, roles)
 	case "update":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'update'")
+		var roles []*amomodels.Role
+		data, _ := json.Marshal(input.Data["roles"])
+		if err := json.Unmarshal(data, &roles); err != nil {
+			return nil, fmt.Errorf("failed to parse roles: %w", err)
 		}
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
-		}
-		return r.updateRole(ctx, input.ID, input.Data)
+		return r.adminUsersService.UpdateRoles(ctx, roles)
 	case "delete":
 		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'delete'")
+			return nil, fmt.Errorf("id is required for delete role")
 		}
-		err := r.sdk.Roles().Delete(ctx, input.ID)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"success": true, "deleted_role_id": input.ID}, nil
+		return nil, r.adminUsersService.DeleteRole(ctx, input.ID)
 	default:
-		return nil, fmt.Errorf("unknown action: %s for roles", input.Action)
+		return nil, fmt.Errorf("unknown action for roles: %s", input.Action)
 	}
-}
-
-func (r *Registry) listRoles(ctx context.Context, filter *AdminUsersFilter) ([]*models.Role, error) {
-	// RolesService наследует BaseEntityService, Get принимает url.Values
-	roles, _, err := r.sdk.Roles().Get(ctx, nil)
-	return roles, err
-}
-
-func (r *Registry) createRole(ctx context.Context, data map[string]any) ([]*models.Role, error) {
-	role := &models.Role{}
-
-	if name, ok := data["name"].(string); ok {
-		role.Name = name
-	}
-
-	roles, _, err := r.sdk.Roles().Create(ctx, []*models.Role{role})
-	return roles, err
-}
-
-func (r *Registry) updateRole(ctx context.Context, id int, data map[string]any) ([]*models.Role, error) {
-	role := &models.Role{ID: id}
-
-	if name, ok := data["name"].(string); ok {
-		role.Name = name
-	}
-
-	roles, _, err := r.sdk.Roles().Update(ctx, []*models.Role{role})
-	return roles, err
 }

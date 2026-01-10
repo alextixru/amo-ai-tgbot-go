@@ -1,361 +1,188 @@
 package tools
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 
-	"github.com/alextixru/amocrm-sdk-go/core/filters"
-	"github.com/alextixru/amocrm-sdk-go/core/models"
-	"github.com/alextixru/amocrm-sdk-go/core/services"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
+
+	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
 
-// AdminIntegrationsInput входные параметры для инструмента admin_integrations
-type AdminIntegrationsInput struct {
-	// Layer слой: webhooks | widgets | website_buttons | chat_templates | short_links
-	Layer string `json:"layer" jsonschema_description:"Слой: webhooks, widgets, website_buttons, chat_templates, short_links"`
-
-	// Action действие
-	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update, delete, subscribe, unsubscribe, install, uninstall"`
-
-	// ID идентификатор (для get, update, delete)
-	ID int `json:"id,omitempty" jsonschema_description:"ID элемента"`
-
-	// Code код виджета (для widgets)
-	Code string `json:"code,omitempty" jsonschema_description:"Код виджета (для widgets: get, install, uninstall)"`
-
-	// Filter фильтры для list
-	Filter *IntegrationsFilter `json:"filter,omitempty" jsonschema_description:"Фильтры для поиска"`
-
-	// Data данные для create/update
-	Data map[string]any `json:"data,omitempty" jsonschema_description:"Данные для создания/обновления"`
-}
-
-// IntegrationsFilter фильтры для admin_integrations
-type IntegrationsFilter struct {
-	Limit int `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Page  int `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-}
-
-// registerAdminIntegrationsTool регистрирует инструмент для управления интеграциями
-func (r *Registry) registerAdminIntegrationsTool() {
-	r.addTool(genkit.DefineTool[AdminIntegrationsInput, any](
+func (r *Registry) RegisterAdminIntegrationsTool() {
+	r.addTool(genkit.DefineTool[gkitmodels.AdminIntegrationsInput, any](
 		r.g,
 		"admin_integrations",
-		"Управление интеграциями amoCRM. "+
-			"Layers: webhooks, widgets, website_buttons, chat_templates, short_links. "+
-			"Webhooks: list, subscribe, unsubscribe. "+
-			"Widgets: list, get, install, uninstall (используют code). "+
-			"WebsiteButtons: list, get (read-only). "+
-			"ChatTemplates: list, get, create, update, delete. "+
-			"ShortLinks: list, create, delete.",
-		func(ctx *ai.ToolContext, input AdminIntegrationsInput) (any, error) {
-			return r.handleAdminIntegrations(ctx.Context, input)
+		"Work with webhooks, widgets, website buttons, chat templates and short links",
+		func(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
+			switch input.Layer {
+			case "webhooks":
+				return r.handleWebhooks(ctx, input)
+			case "widgets":
+				return r.handleWidgets(ctx, input)
+			case "website_buttons":
+				return r.handleWebsiteButtons(ctx, input)
+			case "chat_templates":
+				return r.handleChatTemplates(ctx, input)
+			case "short_links":
+				return r.handleShortLinks(ctx, input)
+			default:
+				return nil, fmt.Errorf("unknown layer: %s", input.Layer)
+			}
 		},
 	))
 }
 
-func (r *Registry) handleAdminIntegrations(ctx context.Context, input AdminIntegrationsInput) (any, error) {
-	switch input.Layer {
-	case "webhooks":
-		return r.handleWebhooks(ctx, input)
-	case "widgets":
-		return r.handleWidgets(ctx, input)
-	case "website_buttons":
-		return r.handleWebsiteButtons(ctx, input)
-	case "chat_templates":
-		return r.handleChatTemplates(ctx, input)
-	case "short_links":
-		return r.handleShortLinks(ctx, input)
-	default:
-		return nil, fmt.Errorf("unknown layer: %s", input.Layer)
-	}
-}
-
-// ============================================================================
-// Webhooks
-// ============================================================================
-
-func (r *Registry) handleWebhooks(ctx context.Context, input AdminIntegrationsInput) (any, error) {
+func (r *Registry) handleWebhooks(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list", "search":
-		return r.listWebhooks(ctx, input.Filter)
+	case "search", "list":
+		return r.adminIntegrationsService.ListWebhooks(ctx)
 	case "subscribe":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'subscribe'")
+		dest, _ := input.Data["destination"].(string)
+		if dest == "" {
+			return nil, fmt.Errorf("destination is required for subscribe")
 		}
-		return r.subscribeWebhook(ctx, input.Data)
-	case "unsubscribe":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'unsubscribe'")
-		}
-		return r.unsubscribeWebhook(ctx, input.Data)
-	default:
-		return nil, fmt.Errorf("unknown action: %s for webhooks (available: list, subscribe, unsubscribe)", input.Action)
-	}
-}
-
-func (r *Registry) listWebhooks(ctx context.Context, filter *IntegrationsFilter) ([]models.Webhook, error) {
-	// WebhooksFilter не поддерживает pagination в SDK
-	webhooks, _, err := r.sdk.Webhooks().Get(ctx, nil)
-	return webhooks, err
-}
-
-func (r *Registry) subscribeWebhook(ctx context.Context, data map[string]any) (*models.Webhook, error) {
-	webhook := &models.Webhook{}
-
-	if destination, ok := data["destination"].(string); ok {
-		webhook.Destination = destination
-	}
-	if settings, ok := data["settings"].([]any); ok {
-		for _, s := range settings {
-			if str, ok := s.(string); ok {
-				webhook.Settings = append(webhook.Settings, str)
+		var settings []string
+		if s, ok := input.Data["settings"].([]any); ok {
+			for _, v := range s {
+				if str, ok := v.(string); ok {
+					settings = append(settings, str)
+				}
 			}
 		}
+		return r.adminIntegrationsService.SubscribeWebhook(ctx, dest, settings)
+	case "unsubscribe":
+		dest, _ := input.Data["destination"].(string)
+		if dest == "" {
+			return nil, fmt.Errorf("destination is required for unsubscribe")
+		}
+		var settings []string
+		if s, ok := input.Data["settings"].([]any); ok {
+			for _, v := range s {
+				if str, ok := v.(string); ok {
+					settings = append(settings, str)
+				}
+			}
+		}
+		return nil, r.adminIntegrationsService.UnsubscribeWebhook(ctx, dest, settings)
+	default:
+		return nil, fmt.Errorf("unknown action for webhooks: %s", input.Action)
 	}
-
-	return r.sdk.Webhooks().Subscribe(ctx, webhook)
 }
 
-func (r *Registry) unsubscribeWebhook(ctx context.Context, data map[string]any) (any, error) {
-	webhook := &models.Webhook{}
-
-	if destination, ok := data["destination"].(string); ok {
-		webhook.Destination = destination
-	}
-
-	err := r.sdk.Webhooks().Unsubscribe(ctx, webhook)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"success": true, "unsubscribed": webhook.Destination}, nil
-}
-
-// ============================================================================
-// Widgets
-// ============================================================================
-
-func (r *Registry) handleWidgets(ctx context.Context, input AdminIntegrationsInput) (any, error) {
+func (r *Registry) handleWidgets(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list", "search":
-		return r.listWidgets(ctx, input.Filter)
+	case "search", "list":
+		return r.adminIntegrationsService.ListWidgets(ctx)
 	case "get":
 		if input.Code == "" {
-			return nil, fmt.Errorf("code is required for action 'get'")
+			return nil, fmt.Errorf("code is required for get widget")
 		}
-		return r.sdk.Widgets().GetByCode(ctx, input.Code)
+		return r.adminIntegrationsService.GetWidget(ctx, input.Code)
+	case "create":
+		var widgets []*amomodels.Widget
+		data, _ := json.Marshal(input.Data["widgets"])
+		if err := json.Unmarshal(data, &widgets); err != nil {
+			return nil, fmt.Errorf("failed to parse widgets data: %w", err)
+		}
+		return r.adminIntegrationsService.CreateWidgets(ctx, widgets)
+	case "update":
+		var widgets []*amomodels.Widget
+		data, _ := json.Marshal(input.Data["widgets"])
+		if err := json.Unmarshal(data, &widgets); err != nil {
+			return nil, fmt.Errorf("failed to parse widgets data: %w", err)
+		}
+		return r.adminIntegrationsService.UpdateWidgets(ctx, widgets)
 	case "install":
 		if input.Code == "" {
-			return nil, fmt.Errorf("code is required for action 'install'")
+			return nil, fmt.Errorf("code is required for install widget")
 		}
-		return r.sdk.Widgets().InstallByCode(ctx, input.Code)
+		return r.adminIntegrationsService.InstallWidget(ctx, input.Code)
 	case "uninstall":
 		if input.Code == "" {
-			return nil, fmt.Errorf("code is required for action 'uninstall'")
+			return nil, fmt.Errorf("code is required for uninstall widget")
 		}
-		err := r.sdk.Widgets().Uninstall(ctx, input.Code)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"success": true, "uninstalled_code": input.Code}, nil
+		return nil, r.adminIntegrationsService.UninstallWidget(ctx, input.Code)
 	default:
-		return nil, fmt.Errorf("unknown action: %s for widgets (available: list, get, install, uninstall)", input.Action)
+		return nil, fmt.Errorf("unknown action for widgets: %s", input.Action)
 	}
 }
 
-func (r *Registry) listWidgets(ctx context.Context, filter *IntegrationsFilter) ([]*models.Widget, error) {
-	f := filters.NewWidgetsFilter()
-	f.SetLimit(50)
-	f.SetPage(1)
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.SetLimit(filter.Limit)
-		}
-		if filter.Page > 0 {
-			f.SetPage(filter.Page)
-		}
-	}
-	widgets, _, err := r.sdk.Widgets().Get(ctx, f)
-	return widgets, err
-}
-
-// ============================================================================
-// Website Buttons (read-only)
-// ============================================================================
-
-func (r *Registry) handleWebsiteButtons(ctx context.Context, input AdminIntegrationsInput) (any, error) {
+func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list", "search":
-		return r.listWebsiteButtons(ctx, input.Filter)
+	case "search", "list":
+		return r.adminIntegrationsService.ListWebsiteButtons(ctx)
 	case "get":
 		if input.ID == 0 {
-			return nil, fmt.Errorf("id (source_id) is required for action 'get'")
+			return nil, fmt.Errorf("id is required for get website button")
 		}
-		return r.sdk.WebsiteButtons().GetOne(ctx, input.ID, nil)
-	default:
-		return nil, fmt.Errorf("unknown action: %s for website_buttons (available: list, get)", input.Action)
-	}
-}
-
-func (r *Registry) listWebsiteButtons(ctx context.Context, filter *IntegrationsFilter) ([]*models.WebsiteButton, error) {
-	f := &services.WebsiteButtonsFilter{
-		Limit: 50,
-		Page:  1,
-	}
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.Limit = filter.Limit
-		}
-		if filter.Page > 0 {
-			f.Page = filter.Page
-		}
-	}
-	buttons, _, err := r.sdk.WebsiteButtons().Get(ctx, f, nil)
-	return buttons, err
-}
-
-// ============================================================================
-// Chat Templates
-// ============================================================================
-
-func (r *Registry) handleChatTemplates(ctx context.Context, input AdminIntegrationsInput) (any, error) {
-	switch input.Action {
-	case "list", "search":
-		return r.listChatTemplates(ctx, input.Filter)
-	case "get":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'get'")
-		}
-		return r.sdk.ChatTemplates().GetOne(ctx, input.ID, nil)
+		return r.adminIntegrationsService.GetWebsiteButton(ctx, input.ID)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+		var req amomodels.WebsiteButtonCreateRequest
+		data, _ := json.Marshal(input.Data)
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, fmt.Errorf("failed to parse website button create request: %w", err)
 		}
-		return r.createChatTemplate(ctx, input.Data)
+		return r.adminIntegrationsService.CreateWebsiteButton(ctx, &req)
 	case "update":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'update'")
+		var req amomodels.WebsiteButtonUpdateRequest
+		data, _ := json.Marshal(input.Data)
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, fmt.Errorf("failed to parse website button update request: %w", err)
 		}
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
-		}
-		return r.updateChatTemplate(ctx, input.ID, input.Data)
-	case "delete":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'delete'")
-		}
-		err := r.sdk.ChatTemplates().Delete(ctx, input.ID)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"success": true, "deleted_id": input.ID}, nil
+		return r.adminIntegrationsService.UpdateWebsiteButton(ctx, &req)
 	default:
-		return nil, fmt.Errorf("unknown action: %s for chat_templates", input.Action)
+		return nil, fmt.Errorf("unknown action for website_buttons: %s", input.Action)
 	}
 }
 
-func (r *Registry) listChatTemplates(ctx context.Context, filter *IntegrationsFilter) ([]*models.ChatTemplate, error) {
-	f := filters.NewTemplatesFilter()
-	f.SetLimit(50)
-	f.SetPage(1)
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.SetLimit(filter.Limit)
-		}
-		if filter.Page > 0 {
-			f.SetPage(filter.Page)
-		}
-	}
-	templates, _, err := r.sdk.ChatTemplates().Get(ctx, f)
-	return templates, err
-}
-
-func (r *Registry) createChatTemplate(ctx context.Context, data map[string]any) ([]*models.ChatTemplate, error) {
-	template := &models.ChatTemplate{}
-
-	if name, ok := data["name"].(string); ok {
-		template.Name = name
-	}
-	if content, ok := data["content"].(string); ok {
-		template.Content = content
-	}
-
-	templates, _, err := r.sdk.ChatTemplates().Create(ctx, []*models.ChatTemplate{template})
-	return templates, err
-}
-
-func (r *Registry) updateChatTemplate(ctx context.Context, id int, data map[string]any) ([]*models.ChatTemplate, error) {
-	template := &models.ChatTemplate{ID: id}
-
-	if name, ok := data["name"].(string); ok {
-		template.Name = name
-	}
-	if content, ok := data["content"].(string); ok {
-		template.Content = content
-	}
-
-	templates, _, err := r.sdk.ChatTemplates().Update(ctx, []*models.ChatTemplate{template})
-	return templates, err
-}
-
-// ============================================================================
-// Short Links
-// ============================================================================
-
-func (r *Registry) handleShortLinks(ctx context.Context, input AdminIntegrationsInput) (any, error) {
+func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
-	case "list", "search":
-		return r.listShortLinks(ctx, input.Filter)
-	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
-		}
-		return r.createShortLink(ctx, input.Data)
+	case "search", "list":
+		return r.adminIntegrationsService.ListChatTemplates(ctx)
 	case "delete":
 		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'delete'")
+			return nil, fmt.Errorf("id is required for delete chat template")
 		}
-		err := r.sdk.ShortLinks().Delete(ctx, input.ID)
-		if err != nil {
-			return nil, err
+		return nil, r.adminIntegrationsService.DeleteChatTemplate(ctx, input.ID)
+	case "send_review":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for send chat template on review")
 		}
-		return map[string]any{"success": true, "deleted_id": input.ID}, nil
+		return r.adminIntegrationsService.SendChatTemplateOnReview(ctx, input.ID)
+	case "update_review":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for update chat template review status")
+		}
+		reviewID, _ := input.Data["review_id"].(float64)
+		status, _ := input.Data["status"].(string)
+		if reviewID == 0 || status == "" {
+			return nil, fmt.Errorf("review_id and status are required for update_review")
+		}
+		return r.adminIntegrationsService.UpdateChatTemplateReviewStatus(ctx, input.ID, int(reviewID), status)
 	default:
-		return nil, fmt.Errorf("unknown action: %s for short_links (available: list, create, delete)", input.Action)
+		return nil, fmt.Errorf("unknown action for chat_templates: %s", input.Action)
 	}
 }
 
-func (r *Registry) listShortLinks(ctx context.Context, filter *IntegrationsFilter) ([]models.ShortLink, error) {
-	f := filters.NewShortLinksFilter()
-	f.SetLimit(50)
-	f.SetPage(1)
-	if filter != nil {
-		if filter.Limit > 0 {
-			f.SetLimit(filter.Limit)
+func (r *Registry) handleShortLinks(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
+	switch input.Action {
+	case "search", "list":
+		return r.adminIntegrationsService.ListShortLinks(ctx)
+	case "create":
+		url, _ := input.Data["url"].(string)
+		if url == "" {
+			return nil, fmt.Errorf("url is required for create short link")
 		}
-		if filter.Page > 0 {
-			f.SetPage(filter.Page)
+		return r.adminIntegrationsService.CreateShortLink(ctx, url)
+	case "delete":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for delete short link")
 		}
+		return nil, r.adminIntegrationsService.DeleteShortLink(ctx, input.ID)
+	default:
+		return nil, fmt.Errorf("unknown action for short_links: %s", input.Action)
 	}
-	links, _, err := r.sdk.ShortLinks().Get(ctx, f)
-	return links, err
-}
-
-func (r *Registry) createShortLink(ctx context.Context, data map[string]any) ([]models.ShortLink, error) {
-	link := models.ShortLink{}
-
-	if url, ok := data["url"].(string); ok {
-		link.URL = url
-	}
-	if entityType, ok := data["entity_type"].(string); ok {
-		link.EntityType = entityType
-	}
-	if entityID, ok := data["entity_id"].(float64); ok {
-		link.EntityID = int(entityID)
-	}
-
-	links, _, err := r.sdk.ShortLinks().Create(ctx, []models.ShortLink{link})
-	return links, err
 }
