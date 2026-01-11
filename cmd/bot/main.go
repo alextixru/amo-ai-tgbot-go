@@ -9,12 +9,13 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
 
-	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
+	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
 
 func init() {
@@ -58,8 +59,11 @@ func main() {
 	// AI agent (needs SDK for tools)
 	agent := gkit.NewAgent(genkitClient, crmClient.SDK())
 
+	// Telegram service (business logic)
+	telegramSvc := telegram.NewService(agent, crmService)
+
 	// Telegram handler
-	handler := tgHandler.NewHandler(agent, crmService, cfg.Debug)
+	handler := tgHandler.NewHandler(telegramSvc, cfg.Debug)
 
 	// === Start Bot ===
 
