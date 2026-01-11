@@ -55,6 +55,7 @@ type Service interface {
 	Unsubscribe(ctx context.Context, parent gkitmodels.ParentEntity, userID int) error
 
 	// Talks
+	GetTalk(ctx context.Context, talkID string) (*models.Talk, error)
 	CloseTalk(ctx context.Context, talkID string, forceClose bool) error
 }
 
