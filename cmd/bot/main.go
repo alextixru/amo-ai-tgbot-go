@@ -12,9 +12,9 @@ import (
 	appCRM "github.com/tihn/amo-ai-tgbot-go/app/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
-	"github.com/tihn/amo-ai-tgbot-go/infrastructure/config"
-	"github.com/tihn/amo-ai-tgbot-go/infrastructure/crm"
-	"github.com/tihn/amo-ai-tgbot-go/infrastructure/genkit"
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
 )
 
 func init() {

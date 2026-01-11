@@ -6,7 +6,7 @@ import (
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
-	"github.com/tihn/amo-ai-tgbot-go/models"
+	"github.com/tihn/amo-ai-tgbot-go/internal/models"
 )
 
 // RegisterActivitiesTool регистрирует инструмент для работы с активностями

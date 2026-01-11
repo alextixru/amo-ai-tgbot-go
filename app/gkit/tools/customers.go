@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"

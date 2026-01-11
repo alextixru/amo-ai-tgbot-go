@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	infraCRM "github.com/tihn/amo-ai-tgbot-go/infrastructure/crm"
+	infraCRM "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 )
 
 // Service provides CRM business logic
