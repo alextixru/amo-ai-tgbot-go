@@ -9,7 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
 
-	appCRM "github.com/tihn/amo-ai-tgbot-go/app/crm"
+	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"

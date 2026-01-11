@@ -9,7 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/crm"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	appctx "github.com/tihn/amo-ai-tgbot-go/internal/services/context"
 )
