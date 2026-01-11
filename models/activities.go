@@ -14,50 +14,103 @@ type ActivitiesInput struct {
 	// ID идентификатор элемента (для get, update, complete)
 	ID int `json:"id,omitempty" jsonschema_description:"ID элемента (для get, update, complete)"`
 
-	// Типизированные Data по layer (только одна заполняется)
+	// Типизированные Data по layer (для одиночных операций)
 	TaskData *TaskData `json:"task_data,omitempty" jsonschema_description:"Данные задачи (layer=tasks)"`
 	NoteData *NoteData `json:"note_data,omitempty" jsonschema_description:"Данные примечания (layer=notes)"`
 	CallData *CallData `json:"call_data,omitempty" jsonschema_description:"Данные звонка (layer=calls)"`
 
-	// Filter фильтры для поиска (только для layer=tasks, action=list)
-	Filter *TasksFilter `json:"filter,omitempty" jsonschema_description:"Фильтры поиска (layer=tasks, action=list)"`
+	// Массивы для батч-операций (используются если Action=create/link)
+	TasksData []TaskData   `json:"tasks_data,omitempty" jsonschema_description:"Массив данных задач для батч-создания (layer=tasks)"`
+	NotesData []NoteData   `json:"notes_data,omitempty" jsonschema_description:"Массив данных примечаний для батч-создания (layer=notes)"`
+	TagNames  []string     `json:"tag_names,omitempty" jsonschema_description:"Список названий тегов для батч-создания (layer=tags)"`
+	LinksTo   []LinkTarget `json:"links_to,omitempty" jsonschema_description:"Цели для батч-связывания (layer=links)"`
 
-	// ResultText текст результата (для tasks.complete)
-	ResultText string `json:"result_text,omitempty" jsonschema_description:"Текст результата (для tasks.complete)"`
+	// Фильтры поиска (layer=... , action=list)
+	Filter       *TasksFilter  `json:"filter,omitempty" jsonschema_description:"Фильтры для задач (layer=tasks)"`
+	EventsFilter *EventsFilter `json:"events_filter,omitempty" jsonschema_description:"Фильтры для событий (layer=events)"`
+	NotesFilter  *NotesFilter  `json:"notes_filter,omitempty" jsonschema_description:"Фильтры для примечаний (layer=notes)"`
+	TagsFilter   *TagsFilter   `json:"tags_filter,omitempty" jsonschema_description:"Фильтры для тегов (layer=tags)"`
+	FilesFilter  *FilesFilter  `json:"files_filter,omitempty" jsonschema_description:"Фильтры для файлов (layer=files)"`
+	LinksFilter  *LinksFilter  `json:"links_filter,omitempty" jsonschema_description:"Фильтры для связей (layer=links)"`
 
-	// UserIDs ID пользователей (для subscribe)
+	// Специфические параметры действий
+	ResultText string   `json:"result_text,omitempty" jsonschema_description:"Текст результата (для tasks.complete)"`
+	ForceClose bool     `json:"force_close,omitempty" jsonschema_description:"Принудительное закрытие беседы (для talks.close)"`
+	With       []string `json:"with,omitempty" jsonschema_description:"Связанные данные (например: contact, lead для задач)"`
+
+	// Параметры пользователей (для subscriptions)
 	UserIDs []int `json:"user_ids,omitempty" jsonschema_description:"ID пользователей (для subscribe)"`
+	UserID  int   `json:"user_id,omitempty" jsonschema_description:"ID пользователя (для unsubscribe)"`
 
-	// UserID ID пользователя (для unsubscribe)
-	UserID int `json:"user_id,omitempty" jsonschema_description:"ID пользователя (для unsubscribe)"`
-
-	// FileUUIDs UUID файлов (для files.link)
+	// Параметры файлов (для files.link/unlink)
 	FileUUIDs []string `json:"file_uuids,omitempty" jsonschema_description:"UUID файлов (для files.link)"`
+	FileUUID  string   `json:"file_uuid,omitempty" jsonschema_description:"UUID файла (для files.unlink)"`
 
-	// FileUUID UUID файла (для files.unlink)
-	FileUUID string `json:"file_uuid,omitempty" jsonschema_description:"UUID файла (для files.unlink)"`
-
-	// TalkID ID чата (для talks.close)
+	// Параметры чатов (для talks.close)
 	TalkID string `json:"talk_id,omitempty" jsonschema_description:"ID чата (для talks.close)"`
 
-	// LinkTo цель для связывания (для links)
+	// Одиночная цель для связывания (совместимость)
 	LinkTo *LinkTarget `json:"link_to,omitempty" jsonschema_description:"Цель связывания (для links.link/unlink)"`
 
-	// TagName название тега (для tags.create)
+	// Название тега (совместимость)
 	TagName string `json:"tag_name,omitempty" jsonschema_description:"Название тега (для tags.create)"`
-
-	// TagID ID тега (для tags.delete)
-	TagID int `json:"tag_id,omitempty" jsonschema_description:"ID тега (для tags.delete)"`
+	TagID   int    `json:"tag_id,omitempty" jsonschema_description:"ID тега (для tags.delete)"`
 }
 
 // TasksFilter критерии поиска задач
 type TasksFilter struct {
 	Limit             int    `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
+	Page              int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Order             string `json:"order,omitempty" jsonschema:"enum=complete_till,enum=created_at" jsonschema_description:"Поле сортировки (по умолчанию complete_till)"`
+	OrderDir          string `json:"order_dir,omitempty" jsonschema:"enum=asc,enum=desc" jsonschema_description:"Направление сортировки (по умолчанию asc)"`
+	IDs               []int  `json:"ids,omitempty" jsonschema_description:"ID конкретных задач"`
 	ResponsibleUserID []int  `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственных"`
 	IsCompleted       *bool  `json:"is_completed,omitempty" jsonschema_description:"Статус завершения (true/false)"`
 	TaskTypeID        int    `json:"task_type_id,omitempty" jsonschema_description:"ID типа задачи"`
-	DateRange         string `json:"date_range,omitempty" jsonschema:"enum=today,enum=tomorrow,enum=overdue,enum=this_week,enum=next_week" jsonschema_description:"Диапазон дат"`
-	Query             string `json:"query,omitempty" jsonschema_description:"Поисковый запрос по тексту"`
+	DateRange         string `json:"date_range,omitempty" jsonschema:"enum=today,enum=tomorrow,enum=overdue,enum=this_week,enum=next_week" jsonschema_description:"Диапазон дат (клиентская фильтрация)"`
+	Query             string `json:"query,omitempty" jsonschema_description:"Поисковый запрос (влияет только на лимиты в задачах)"`
+	UpdatedAt         *int64 `json:"updated_at,omitempty" jsonschema_description:"Фильтр по дате изменения (timestamp)"`
+}
+
+// EventsFilter критерии фильтрации событий
+type EventsFilter struct {
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 100)"`
+	Page      int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Types     []string `json:"types,omitempty" jsonschema_description:"Типы событий: lead_added, lead_status_changed, contact_added, etc."`
+	CreatedBy []int    `json:"created_by,omitempty" jsonschema_description:"ID создателей событий"`
+}
+
+// NotesFilter критерии фильтрации примечаний
+type NotesFilter struct {
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
+	Page      int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	IDs       []int    `json:"ids,omitempty" jsonschema_description:"ID конкретных примечаний"`
+	NoteTypes []string `json:"note_types,omitempty" jsonschema:"enum=common,enum=call_in,enum=call_out,enum=service_message" jsonschema_description:"Типы примечаний"`
+	UpdatedAt *int64   `json:"updated_at,omitempty" jsonschema_description:"Фильтр по дате изменения (timestamp)"`
+}
+
+// TagsFilter критерии фильтрации тегов
+type TagsFilter struct {
+	Limit int    `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
+	Page  int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Query string `json:"query,omitempty" jsonschema_description:"Поиск по названию (частичное совпадение)"`
+	Name  string `json:"name,omitempty" jsonschema_description:"Фильтр по точному названию тега"`
+	IDs   []int  `json:"ids,omitempty" jsonschema_description:"ID конкретных тегов"`
+}
+
+// FilesFilter критерии фильтрации файлов
+type FilesFilter struct {
+	Limit      int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
+	Page       int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Extensions []string `json:"extensions,omitempty" jsonschema_description:"Расширения файлов: pdf, docx, xlsx"`
+	Term       string   `json:"term,omitempty" jsonschema_description:"Поисковый термин (имя файла)"`
+	UUID       string   `json:"uuid,omitempty" jsonschema_description:"UUID конкретного файла"`
+}
+
+// LinksFilter критерии фильтрации связей
+type LinksFilter struct {
+	ToEntityType string `json:"to_entity_type,omitempty" jsonschema_description:"Тип связанной сущности: leads, contacts, companies, catalog_elements"`
+	ToEntityID   int    `json:"to_entity_id,omitempty" jsonschema_description:"ID конкретной связанной сущности"`
 }
 
 // TaskData данные для создания/обновления задачи

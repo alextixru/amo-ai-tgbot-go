@@ -20,6 +20,9 @@ type CustomersInput struct {
 	// Data данные покупателя (для create, update)
 	Data *CustomerData `json:"data,omitempty" jsonschema_description:"Данные покупателя"`
 
+	// Batch массив покупателей (для батч-создания/обновления)
+	Batch []*CustomerData `json:"batch,omitempty" jsonschema_description:"Массив покупателей для батч-создания/обновления"`
+
 	// Points количество баллов (для earn_points, redeem_points)
 	Points int `json:"points,omitempty" jsonschema_description:"Количество бонусных баллов"`
 
@@ -32,19 +35,28 @@ type CustomersInput struct {
 
 // CustomerFilter фильтры поиска покупателей
 type CustomerFilter struct {
-	Page               int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	Limit              int    `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Query              string `json:"query,omitempty" jsonschema_description:"Поисковый запрос"`
-	ResponsibleUserIDs []int  `json:"responsible_user_ids,omitempty" jsonschema_description:"ID ответственных"`
+	Page               int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Limit              int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
+	Query              string   `json:"query,omitempty" jsonschema_description:"Поисковый запрос"`
+	ResponsibleUserIDs []int    `json:"responsible_user_ids,omitempty" jsonschema_description:"ID ответственных"`
+	IDs                []int    `json:"ids,omitempty" jsonschema_description:"ID покупателей для фильтрации"`
+	StatusIDs          []int    `json:"status_ids,omitempty" jsonschema_description:"ID статусов покупателей"`
+	Names              []string `json:"names,omitempty" jsonschema_description:"Имена покупателей для поиска"`
+	NextDateFrom       int64    `json:"next_date_from,omitempty" jsonschema_description:"Дата следующей покупки от (Unix timestamp)"`
+	NextDateTo         int64    `json:"next_date_to,omitempty" jsonschema_description:"Дата следующей покупки до (Unix timestamp)"`
+	With               []string `json:"with,omitempty" jsonschema_description:"Связанные сущности: catalog_elements, contacts, companies, segments"`
 }
 
 // CustomerData данные покупателя
 type CustomerData struct {
-	Name              string `json:"name" jsonschema_description:"Имя покупателя"`
-	ResponsibleUserID int    `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственного"`
-	NextDate          int64  `json:"next_date,omitempty" jsonschema_description:"Дата следующей покупки (Unix timestamp)"`
-	NextPrice         int    `json:"next_price,omitempty" jsonschema_description:"Ожидаемая сумма"`
-	StatusID          int    `json:"status_id,omitempty" jsonschema_description:"ID статуса"`
+	Name               string         `json:"name" jsonschema_description:"Имя покупателя"`
+	ResponsibleUserID  int            `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственного"`
+	NextDate           int64          `json:"next_date,omitempty" jsonschema_description:"Дата следующей покупки (Unix timestamp)"`
+	NextPrice          int            `json:"next_price,omitempty" jsonschema_description:"Ожидаемая сумма"`
+	StatusID           int            `json:"status_id,omitempty" jsonschema_description:"ID статуса"`
+	CustomFieldsValues map[string]any `json:"custom_fields_values,omitempty" jsonschema_description:"Значения кастомных полей"`
+	TagsToAdd          []string       `json:"tags_to_add,omitempty" jsonschema_description:"Теги для добавления"`
+	TagsToDelete       []string       `json:"tags_to_delete,omitempty" jsonschema_description:"Теги для удаления"`
 }
 
 // CustomerTransactionData данные транзакции

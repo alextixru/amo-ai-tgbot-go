@@ -42,23 +42,29 @@ func (r *Registry) handleEntities(ctx context.Context, input models.EntitiesInpu
 func (r *Registry) handleLeads(ctx context.Context, input models.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchLeads(ctx, input.Filter)
+		return r.entitiesService.SearchLeads(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetLead(ctx, input.ID)
+		return r.entitiesService.GetLead(ctx, input.ID, input.With)
 	case "create":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.CreateLeads(ctx, input.DataList)
+		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
 		return r.entitiesService.CreateLead(ctx, input.Data)
 	case "update":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.UpdateLeads(ctx, input.DataList)
+		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
 		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
+			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
 		return r.entitiesService.UpdateLead(ctx, input.ID, input.Data)
 	case "sync":
@@ -66,11 +72,6 @@ func (r *Registry) handleLeads(ctx context.Context, input models.EntitiesInput) 
 			return nil, fmt.Errorf("data is required for action 'sync'")
 		}
 		return r.entitiesService.SyncLead(ctx, input.ID, input.Data)
-	case "delete":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for action 'delete'")
-		}
-		return nil, r.entitiesService.DeleteLead(ctx, input.ID)
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
@@ -82,7 +83,7 @@ func (r *Registry) handleLeads(ctx context.Context, input models.EntitiesInput) 
 		}
 		return nil, r.entitiesService.UnlinkLead(ctx, input.ID, input.LinkTo)
 	default:
-		return nil, fmt.Errorf("unknown action for leads: %s", input.Action)
+		return nil, fmt.Errorf("unknown action for leads: %s (note: delete not supported)", input.Action)
 	}
 }
 
@@ -91,23 +92,29 @@ func (r *Registry) handleLeads(ctx context.Context, input models.EntitiesInput) 
 func (r *Registry) handleContacts(ctx context.Context, input models.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchContacts(ctx, input.Filter)
+		return r.entitiesService.SearchContacts(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetContact(ctx, input.ID)
+		return r.entitiesService.GetContact(ctx, input.ID, input.With)
 	case "create":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.CreateContacts(ctx, input.DataList)
+		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
 		return r.entitiesService.CreateContact(ctx, input.Data)
 	case "update":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.UpdateContacts(ctx, input.DataList)
+		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
 		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
+			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
 		return r.entitiesService.UpdateContact(ctx, input.ID, input.Data)
 	case "sync":
@@ -116,6 +123,7 @@ func (r *Registry) handleContacts(ctx context.Context, input models.EntitiesInpu
 		}
 		return r.entitiesService.SyncContact(ctx, input.ID, input.Data)
 	case "get_chats":
+		// ... existing get_chats handling ...
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get_chats'")
 		}
@@ -145,23 +153,29 @@ func (r *Registry) handleContacts(ctx context.Context, input models.EntitiesInpu
 func (r *Registry) handleCompanies(ctx context.Context, input models.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchCompanies(ctx, input.Filter)
+		return r.entitiesService.SearchCompanies(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetCompany(ctx, input.ID)
+		return r.entitiesService.GetCompany(ctx, input.ID, input.With)
 	case "create":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.CreateCompanies(ctx, input.DataList)
+		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
 		return r.entitiesService.CreateCompany(ctx, input.Data)
 	case "update":
+		if len(input.DataList) > 0 {
+			return r.entitiesService.UpdateCompanies(ctx, input.DataList)
+		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
 		}
 		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'update'")
+			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
 		return r.entitiesService.UpdateCompany(ctx, input.ID, input.Data)
 	case "sync":

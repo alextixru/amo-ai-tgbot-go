@@ -2,7 +2,7 @@
 
 ## Задача
 
-Последовательно проверить каждый раздел `toolmap.md` на соответствие реальным методам в `amocrm-sdk-go/core/services/`.
+Последовательно проверить каждый раздел `toolmap.md` на соответствие реальным методам в `amocrm-sdk-go/core/adapters/`.
 
 ## Инструкция
 
@@ -82,7 +82,7 @@
 ## Пути файлов
 
 - toolmap: `/Users/tihn/amo-ai-tgbot-go/app/gkit/tools/toolmap.md`
-- SDK services: `/Users/tihn/amocrm-sdk-go/core/services/`
+- SDK services: `/Users/tihn/amocrm-sdk-go/core/adapters/`
 - Отчёт: `/Users/tihn/amo-ai-tgbot-go/doc/toolmap_audit.md`
 
 ## Начало

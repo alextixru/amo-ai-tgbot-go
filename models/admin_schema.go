@@ -6,7 +6,7 @@ type AdminSchemaInput struct {
 	Layer string `json:"layer" jsonschema_description:"Слой схемы: custom_fields, field_groups, loss_reasons, sources"`
 
 	// Action действие: search | get | create | update | delete
-	Action string `json:"action" jsonschema_description:"Действие: search, get, create, update, delete"`
+	Action string `json:"action" jsonschema_description:"Действие: search, get, create, update, delete. ВАЖНО: update недоступен для loss_reasons (API ограничение)"`
 
 	// EntityType тип сущности (для custom_fields и field_groups): leads | contacts | companies | customers
 	EntityType string `json:"entity_type,omitempty" jsonschema_description:"Тип сущности: leads, contacts, companies, customers (для custom_fields и field_groups)"`
@@ -28,4 +28,11 @@ type AdminSchemaInput struct {
 type SchemaFilter struct {
 	Limit int `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50)"`
 	Page  int `json:"page,omitempty" jsonschema_description:"Номер страницы (по умолчанию 1)"`
+
+	// Для custom_fields
+	IDs   []int    `json:"ids,omitempty" jsonschema_description:"Фильтр по ID полей (для custom_fields)"`
+	Types []string `json:"types,omitempty" jsonschema_description:"Фильтр по типам полей: text, numeric, checkbox, select, multiselect, date, url, textarea, radiobutton, streetaddress, smart_address, birthday, legal_entity, date_time, price, category, items, chained_list, tracking_data, linked_entity, file, payer, supplier, multitext, monetary (для custom_fields)"`
+
+	// Для sources
+	ExternalIDs []string `json:"external_ids,omitempty" jsonschema_description:"Фильтр по external_id источников (для sources)"`
 }

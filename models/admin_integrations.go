@@ -19,10 +19,22 @@ type AdminIntegrationsInput struct {
 
 	// Data данные для create/update
 	Data map[string]any `json:"data,omitempty" jsonschema_description:"Данные для создания/обновления"`
+
+	// IDs идентификаторы для батч-операций (delete_many)
+	IDs []int `json:"ids,omitempty" jsonschema_description:"Массив ID элементов (для chat_templates: delete_many)"`
+
+	// URLs массив URL для батч-создания (short_links)
+	URLs []string `json:"urls,omitempty" jsonschema_description:"Массив URL (для short_links: create)"`
+
+	// Settings настройки виджета
+	Settings map[string]any `json:"settings,omitempty" jsonschema_description:"Настройки виджета (для widgets: install)"`
 }
 
 // IntegrationsFilter фильтры для admin_integrations
 type IntegrationsFilter struct {
-	Limit int `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Page  int `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Limit       int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50)"`
+	Page        int      `json:"page,omitempty" jsonschema_description:"Номер страницы (по умолчанию 1)"`
+	Destination string   `json:"destination,omitempty" jsonschema_description:"URL вебхука для фильтрации (для webhooks)"`
+	ExternalIDs []string `json:"external_ids,omitempty" jsonschema_description:"Внешние ID для фильтрации (для chat_templates)"`
+	With        []string `json:"with,omitempty" jsonschema_description:"Связанные данные: scripts (для website_buttons)"`
 }

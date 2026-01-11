@@ -61,18 +61,23 @@ func (r *Registry) handleActivities(ctx context.Context, input models.Activities
 func (r *Registry) handleTasks(ctx context.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListTasks(ctx, input.Parent, input.Filter)
+		return r.activitiesService.ListTasks(ctx, input.Parent, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		return r.activitiesService.GetTask(ctx, input.ID)
+		return r.activitiesService.GetTask(ctx, input.ID, input.With)
 	case "create":
-		if input.TaskData == nil {
-			return nil, fmt.Errorf("task_data is required")
-		}
 		if input.Parent == nil {
 			return nil, fmt.Errorf("parent is required for create")
+		}
+		// Batch create
+		if len(input.TasksData) > 0 {
+			return r.activitiesService.CreateTasks(ctx, *input.Parent, input.TasksData)
+		}
+		// Single create
+		if input.TaskData == nil {
+			return nil, fmt.Errorf("task_data or tasks_data is required")
 		}
 		return r.activitiesService.CreateTask(ctx, *input.Parent, input.TaskData)
 	case "update":
@@ -99,15 +104,20 @@ func (r *Registry) handleNotes(ctx context.Context, input models.ActivitiesInput
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListNotes(ctx, *input.Parent)
+		return r.activitiesService.ListNotes(ctx, *input.Parent, input.NotesFilter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
 		return r.activitiesService.GetNote(ctx, input.Parent.Type, input.ID)
 	case "create":
+		// Batch create
+		if len(input.NotesData) > 0 {
+			return r.activitiesService.CreateNotes(ctx, *input.Parent, input.NotesData)
+		}
+		// Single create
 		if input.NoteData == nil {
-			return nil, fmt.Errorf("note_data is required")
+			return nil, fmt.Errorf("note_data or notes_data is required")
 		}
 		return r.activitiesService.CreateNote(ctx, *input.Parent, input.NoteData)
 	case "update":
@@ -139,10 +149,7 @@ func (r *Registry) handleCalls(ctx context.Context, input models.ActivitiesInput
 func (r *Registry) handleEvents(ctx context.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		if input.Parent == nil {
-			return nil, fmt.Errorf("parent is required for events list")
-		}
-		return r.activitiesService.ListEvents(ctx, *input.Parent)
+		return r.activitiesService.ListEvents(ctx, input.Parent, input.EventsFilter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
@@ -159,7 +166,7 @@ func (r *Registry) handleFiles(ctx context.Context, input models.ActivitiesInput
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListFiles(ctx, *input.Parent)
+		return r.activitiesService.ListFiles(ctx, *input.Parent, input.FilesFilter)
 	case "link":
 		if len(input.FileUUIDs) == 0 {
 			return nil, fmt.Errorf("file_uuids is required")
@@ -181,10 +188,15 @@ func (r *Registry) handleLinks(ctx context.Context, input models.ActivitiesInput
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListLinks(ctx, *input.Parent)
+		return r.activitiesService.ListLinks(ctx, *input.Parent, input.LinksFilter)
 	case "link":
+		// Batch link
+		if len(input.LinksTo) > 0 {
+			return r.activitiesService.LinkEntities(ctx, *input.Parent, input.LinksTo)
+		}
+		// Single link
 		if input.LinkTo == nil {
-			return nil, fmt.Errorf("link_to is required")
+			return nil, fmt.Errorf("link_to or links_to is required")
 		}
 		return r.activitiesService.LinkEntity(ctx, *input.Parent, input.LinkTo)
 	case "unlink":
@@ -198,36 +210,28 @@ func (r *Registry) handleLinks(ctx context.Context, input models.ActivitiesInput
 }
 
 func (r *Registry) handleTags(ctx context.Context, input models.ActivitiesInput) (any, error) {
+	entityType := ""
+	if input.Parent != nil {
+		entityType = input.Parent.Type
+	}
+	if entityType == "" {
+		return nil, fmt.Errorf("parent.type is required for tags")
+	}
+
 	switch input.Action {
 	case "list":
-		entityType := ""
-		if input.Parent != nil {
-			entityType = input.Parent.Type
-		}
-		if entityType == "" {
-			return nil, fmt.Errorf("parent.type or entity_type is required")
-		}
-		return r.activitiesService.ListTags(ctx, entityType)
+		return r.activitiesService.ListTags(ctx, entityType, input.TagsFilter)
 	case "create":
-		entityType := ""
-		if input.Parent != nil {
-			entityType = input.Parent.Type
+		// Batch create
+		if len(input.TagNames) > 0 {
+			return r.activitiesService.CreateTags(ctx, entityType, input.TagNames)
 		}
-		if entityType == "" {
-			return nil, fmt.Errorf("parent.type is required")
-		}
+		// Single create
 		if input.TagName == "" {
-			return nil, fmt.Errorf("tag_name is required")
+			return nil, fmt.Errorf("tag_name or tag_names is required")
 		}
 		return r.activitiesService.CreateTag(ctx, entityType, input.TagName)
 	case "delete":
-		entityType := ""
-		if input.Parent != nil {
-			entityType = input.Parent.Type
-		}
-		if entityType == "" {
-			return nil, fmt.Errorf("parent.type is required")
-		}
 		if input.TagID == 0 {
 			return nil, fmt.Errorf("tag_id is required")
 		}
@@ -261,17 +265,12 @@ func (r *Registry) handleSubscriptions(ctx context.Context, input models.Activit
 
 func (r *Registry) handleTalks(ctx context.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
-	case "list":
-		if input.Parent == nil {
-			return nil, fmt.Errorf("parent is required for talks")
-		}
-		return r.activitiesService.ListTalks(ctx, *input.Parent)
 	case "close":
 		if input.TalkID == "" {
 			return nil, fmt.Errorf("talk_id is required")
 		}
-		return nil, r.activitiesService.CloseTalk(ctx, input.TalkID)
+		return nil, r.activitiesService.CloseTalk(ctx, input.TalkID, input.ForceClose)
 	default:
-		return nil, fmt.Errorf("unknown action: %s", input.Action)
+		return nil, fmt.Errorf("unknown action: %s (talks only support 'close')", input.Action)
 	}
 }

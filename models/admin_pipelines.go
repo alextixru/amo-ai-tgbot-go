@@ -12,5 +12,5 @@ type AdminPipelinesInput struct {
 	StatusID int `json:"status_id,omitempty" jsonschema_description:"ID статуса (для операций со статусами)"`
 
 	// Data данные для create/update
-	Data map[string]any `json:"data,omitempty" jsonschema_description:"Данные для создания/обновления"`
+	Data map[string]any `json:"data,omitempty" jsonschema_description:"Данные для создания/обновления. Для pipeline: {name: string, sort: int, is_main: bool, is_unsorted_on: bool}. Для status: {name: string, color: string (например '#fffeb2'), sort: int, type: int}. Для батч-создания статусов: {statuses: [{name, color, sort, type}, ...]}"`
 }

@@ -6,7 +6,9 @@ import (
 
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
+	"github.com/alextixru/amocrm-sdk-go/core/services"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
@@ -15,7 +17,7 @@ func (r *Registry) RegisterAdminIntegrationsTool() {
 	r.addTool(genkit.DefineTool[gkitmodels.AdminIntegrationsInput, any](
 		r.g,
 		"admin_integrations",
-		"Work with webhooks, widgets, website buttons, chat templates and short links",
+		"Work with webhooks, widgets, website buttons (with scripts), chat templates and short links",
 		func(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 			switch input.Layer {
 			case "webhooks":
@@ -38,7 +40,14 @@ func (r *Registry) RegisterAdminIntegrationsTool() {
 func (r *Registry) handleWebhooks(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminIntegrationsService.ListWebhooks(ctx)
+		var filter *filters.WebhooksFilter
+		if input.Filter != nil {
+			filter = filters.NewWebhooksFilter()
+			if input.Filter.Destination != "" {
+				filter.SetDestination(input.Filter.Destination)
+			}
+		}
+		return r.adminIntegrationsService.ListWebhooks(ctx, filter)
 	case "subscribe":
 		dest, _ := input.Data["destination"].(string)
 		if dest == "" {
@@ -75,31 +84,33 @@ func (r *Registry) handleWebhooks(ctx *ai.ToolContext, input gkitmodels.AdminInt
 func (r *Registry) handleWidgets(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminIntegrationsService.ListWidgets(ctx)
+		var filter *filters.WidgetsFilter
+		if input.Filter != nil {
+			filter = filters.NewWidgetsFilter()
+			if input.Filter.Limit > 0 {
+				filter.SetLimit(input.Filter.Limit)
+			}
+			if input.Filter.Page > 0 {
+				filter.SetPage(input.Filter.Page)
+			}
+		}
+		return r.adminIntegrationsService.ListWidgets(ctx, filter)
 	case "get":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for get widget")
 		}
 		return r.adminIntegrationsService.GetWidget(ctx, input.Code)
-	case "create":
-		var widgets []*amomodels.Widget
-		data, _ := json.Marshal(input.Data["widgets"])
-		if err := json.Unmarshal(data, &widgets); err != nil {
-			return nil, fmt.Errorf("failed to parse widgets data: %w", err)
-		}
-		return r.adminIntegrationsService.CreateWidgets(ctx, widgets)
-	case "update":
-		var widgets []*amomodels.Widget
-		data, _ := json.Marshal(input.Data["widgets"])
-		if err := json.Unmarshal(data, &widgets); err != nil {
-			return nil, fmt.Errorf("failed to parse widgets data: %w", err)
-		}
-		return r.adminIntegrationsService.UpdateWidgets(ctx, widgets)
 	case "install":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for install widget")
 		}
-		return r.adminIntegrationsService.InstallWidget(ctx, input.Code)
+		settings := input.Settings
+		if settings == nil {
+			if s, ok := input.Data["settings"].(map[string]any); ok {
+				settings = s
+			}
+		}
+		return r.adminIntegrationsService.InstallWidget(ctx, input.Code, settings)
 	case "uninstall":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for uninstall widget")
@@ -113,12 +124,28 @@ func (r *Registry) handleWidgets(ctx *ai.ToolContext, input gkitmodels.AdminInte
 func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminIntegrationsService.ListWebsiteButtons(ctx)
+		var filter *services.WebsiteButtonsFilter
+		var with []string
+		if input.Filter != nil {
+			filter = &services.WebsiteButtonsFilter{}
+			if input.Filter.Limit > 0 {
+				filter.Limit = input.Filter.Limit
+			}
+			if input.Filter.Page > 0 {
+				filter.Page = input.Filter.Page
+			}
+			with = input.Filter.With
+		}
+		return r.adminIntegrationsService.ListWebsiteButtons(ctx, filter, with)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get website button")
 		}
-		return r.adminIntegrationsService.GetWebsiteButton(ctx, input.ID)
+		var with []string
+		if input.Filter != nil {
+			with = input.Filter.With
+		}
+		return r.adminIntegrationsService.GetWebsiteButton(ctx, input.ID, with)
 	case "create":
 		var req amomodels.WebsiteButtonCreateRequest
 		data, _ := json.Marshal(input.Data)
@@ -133,6 +160,11 @@ func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.Ad
 			return nil, fmt.Errorf("failed to parse website button update request: %w", err)
 		}
 		return r.adminIntegrationsService.UpdateWebsiteButton(ctx, &req)
+	case "add_chat":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id (source_id) is required for add_chat")
+		}
+		return nil, r.adminIntegrationsService.AddOnlineChat(ctx, input.ID)
 	default:
 		return nil, fmt.Errorf("unknown action for website_buttons: %s", input.Action)
 	}
@@ -141,12 +173,30 @@ func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.Ad
 func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminIntegrationsService.ListChatTemplates(ctx)
+		var filter *filters.TemplatesFilter
+		if input.Filter != nil {
+			filter = filters.NewTemplatesFilter()
+			if input.Filter.Limit > 0 {
+				filter.SetLimit(input.Filter.Limit)
+			}
+			if input.Filter.Page > 0 {
+				filter.SetPage(input.Filter.Page)
+			}
+			if len(input.Filter.ExternalIDs) > 0 {
+				filter.SetExternalIDs(input.Filter.ExternalIDs)
+			}
+		}
+		return r.adminIntegrationsService.ListChatTemplates(ctx, filter)
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete chat template")
 		}
 		return nil, r.adminIntegrationsService.DeleteChatTemplate(ctx, input.ID)
+	case "delete_many":
+		if len(input.IDs) == 0 {
+			return nil, fmt.Errorf("ids are required for delete_many")
+		}
+		return nil, r.adminIntegrationsService.DeleteChatTemplates(ctx, input.IDs)
 	case "send_review":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for send chat template on review")
@@ -170,8 +220,21 @@ func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.Adm
 func (r *Registry) handleShortLinks(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminIntegrationsService.ListShortLinks(ctx)
+		var filter *filters.ShortLinksFilter
+		if input.Filter != nil {
+			filter = filters.NewShortLinksFilter()
+			if input.Filter.Limit > 0 {
+				filter.SetLimit(input.Filter.Limit)
+			}
+			if input.Filter.Page > 0 {
+				filter.SetPage(input.Filter.Page)
+			}
+		}
+		return r.adminIntegrationsService.ListShortLinks(ctx, filter)
 	case "create":
+		if len(input.URLs) > 0 {
+			return r.adminIntegrationsService.CreateShortLinks(ctx, input.URLs)
+		}
 		url, _ := input.Data["url"].(string)
 		if url == "" {
 			return nil, fmt.Errorf("url is required for create short link")

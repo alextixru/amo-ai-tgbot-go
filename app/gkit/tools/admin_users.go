@@ -32,12 +32,16 @@ func (r *Registry) RegisterAdminUsersTool() {
 func (r *Registry) handleUsers(ctx *ai.ToolContext, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.adminUsersService.ListUsers(ctx)
+		return r.adminUsersService.ListUsers(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get user")
 		}
-		return r.adminUsersService.GetUser(ctx, input.ID)
+		var with []string
+		if input.Filter != nil {
+			with = input.Filter.With
+		}
+		return r.adminUsersService.GetUser(ctx, input.ID, with)
 	case "create":
 		var users []*amomodels.User
 		data, _ := json.Marshal(input.Data["users"])
@@ -55,12 +59,16 @@ func (r *Registry) handleUsers(ctx *ai.ToolContext, input gkitmodels.AdminUsersI
 func (r *Registry) handleRoles(ctx *ai.ToolContext, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.adminUsersService.ListRoles(ctx)
+		return r.adminUsersService.ListRoles(ctx, input.Filter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get role")
 		}
-		return r.adminUsersService.GetRole(ctx, input.ID)
+		var with []string
+		if input.Filter != nil {
+			with = input.Filter.With
+		}
+		return r.adminUsersService.GetRole(ctx, input.ID, with)
 	case "create":
 		var roles []*amomodels.Role
 		data, _ := json.Marshal(input.Data["roles"])

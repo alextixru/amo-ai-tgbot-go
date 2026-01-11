@@ -15,7 +15,7 @@ func (r *Registry) RegisterAdminPipelinesTool() {
 	r.addTool(genkit.DefineTool[gkitmodels.AdminPipelinesInput, any](
 		r.g,
 		"admin_pipelines",
-		"Work with pipelines and statuses",
+		"Управление воронками (pipelines) и статусами. Действия: list/get/create/update/delete для воронок, list_statuses/get_status/create_status/update_status/delete_status для статусов. Поддерживается батч-создание воронок (data.pipelines: [...]) и статусов (data.statuses: [...]).",
 		func(ctx *ai.ToolContext, input gkitmodels.AdminPipelinesInput) (any, error) {
 			switch input.Action {
 			// Pipelines
@@ -67,6 +67,16 @@ func (r *Registry) RegisterAdminPipelinesTool() {
 				if input.PipelineID == 0 {
 					return nil, fmt.Errorf("pipeline_id is required")
 				}
+				// Batch mode: data.statuses
+				if statusesData, ok := input.Data["statuses"]; ok {
+					var statuses []*amomodels.Status
+					data, _ := json.Marshal(statusesData)
+					if err := json.Unmarshal(data, &statuses); err != nil {
+						return nil, fmt.Errorf("failed to parse statuses: %w", err)
+					}
+					return r.adminPipelinesService.CreateStatuses(ctx, input.PipelineID, statuses)
+				}
+				// Single mode
 				var s amomodels.Status
 				data, _ := json.Marshal(input.Data)
 				if err := json.Unmarshal(data, &s); err != nil {

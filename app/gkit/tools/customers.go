@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
@@ -20,37 +22,69 @@ func (r *Registry) RegisterCustomersTool() {
 			case "customers":
 				switch input.Action {
 				case "list":
-					return r.customersService.ListCustomers(ctx)
+					var sdkFilter *filters.CustomersFilter
+					var with []string
+					if input.Filter != nil {
+						sdkFilter = &filters.CustomersFilter{}
+						if input.Filter.Page > 0 {
+							sdkFilter.SetPage(input.Filter.Page)
+						}
+						if input.Filter.Limit > 0 {
+							sdkFilter.SetLimit(input.Filter.Limit)
+						}
+						if input.Filter.Query != "" {
+							sdkFilter.SetQuery(input.Filter.Query)
+						}
+						if len(input.Filter.ResponsibleUserIDs) > 0 {
+							sdkFilter.SetResponsibleUserIDs(input.Filter.ResponsibleUserIDs)
+						}
+						if len(input.Filter.IDs) > 0 {
+							sdkFilter.SetIDs(input.Filter.IDs)
+						}
+						if len(input.Filter.StatusIDs) > 0 {
+							sdkFilter.SetStatusIDs(input.Filter.StatusIDs)
+						}
+						if len(input.Filter.Names) > 0 {
+							sdkFilter.SetNames(input.Filter.Names)
+						}
+						// NextDate filter is NOT supported by the current SDK version.
+						// Supported ranges: CreatedAt, UpdatedAt, ClosestTaskAt.
+						with = input.Filter.With
+					}
+					return r.customersService.ListCustomers(ctx, sdkFilter, with)
 				case "get":
 					if input.ID == 0 {
 						return nil, fmt.Errorf("id is required")
 					}
-					return r.customersService.GetCustomer(ctx, input.ID)
+					var with []string
+					if input.Filter != nil {
+						with = input.Filter.With
+					}
+					return r.customersService.GetCustomer(ctx, input.ID, with)
 				case "create":
+					if input.Batch != nil && len(input.Batch) > 0 {
+						customers := make([]amomodels.Customer, 0, len(input.Batch))
+						for _, d := range input.Batch {
+							customers = append(customers, mapCustomerData(d, 0))
+						}
+						return r.customersService.CreateCustomers(ctx, customers)
+					}
 					if input.Data == nil {
-						return nil, fmt.Errorf("data is required")
+						return nil, fmt.Errorf("data or batch is required")
 					}
-					customer := amomodels.Customer{
-						Name:      input.Data.Name,
-						NextPrice: input.Data.NextPrice,
-						NextDate:  input.Data.NextDate,
-						StatusID:  input.Data.StatusID,
-					}
-					customer.ResponsibleUserID = input.Data.ResponsibleUserID
-					return r.customersService.CreateCustomers(ctx, []amomodels.Customer{customer})
+					return r.customersService.CreateCustomers(ctx, []amomodels.Customer{mapCustomerData(input.Data, 0)})
 				case "update":
+					if input.Batch != nil && len(input.Batch) > 0 {
+						customers := make([]amomodels.Customer, 0, len(input.Batch))
+						for _, d := range input.Batch {
+							customers = append(customers, mapCustomerData(d, input.ID))
+						}
+						return r.customersService.UpdateCustomers(ctx, customers)
+					}
 					if input.ID == 0 || input.Data == nil {
 						return nil, fmt.Errorf("id and data are required")
 					}
-					customer := amomodels.Customer{
-						Name:      input.Data.Name,
-						NextPrice: input.Data.NextPrice,
-						NextDate:  input.Data.NextDate,
-						StatusID:  input.Data.StatusID,
-					}
-					customer.ID = input.ID
-					customer.ResponsibleUserID = input.Data.ResponsibleUserID
-					return r.customersService.UpdateCustomers(ctx, []amomodels.Customer{customer})
+					return r.customersService.UpdateCustomers(ctx, []amomodels.Customer{mapCustomerData(input.Data, input.ID)})
 				case "delete":
 					if input.ID == 0 {
 						return nil, fmt.Errorf("id is required")
@@ -179,4 +213,72 @@ func (r *Registry) RegisterCustomersTool() {
 			}
 		},
 	))
+}
+
+// mapCustomerData конвертирует CustomerData в SDK Customer
+func mapCustomerData(d *gkitmodels.CustomerData, id int) amomodels.Customer {
+	customer := amomodels.Customer{
+		Name:      d.Name,
+		NextPrice: d.NextPrice,
+		NextDate:  d.NextDate,
+		StatusID:  d.StatusID,
+	}
+	customer.ID = id
+	customer.ResponsibleUserID = d.ResponsibleUserID
+
+	if d.CustomFieldsValues != nil {
+		customer.CustomFieldsValues = mapCustomerCustomFieldsValues(d.CustomFieldsValues)
+	}
+
+	if len(d.TagsToAdd) > 0 {
+		for _, tag := range d.TagsToAdd {
+			customer.TagsToAdd = append(customer.TagsToAdd, amomodels.Tag{Name: tag})
+		}
+	}
+	if len(d.TagsToDelete) > 0 {
+		for _, tag := range d.TagsToDelete {
+			customer.TagsToDelete = append(customer.TagsToDelete, amomodels.Tag{Name: tag})
+		}
+	}
+
+	return customer
+}
+
+// mapCustomerCustomFieldsValues конвертирует map[string]any в []CustomFieldValue
+func mapCustomerCustomFieldsValues(cfv map[string]any) []amomodels.CustomFieldValue {
+	// Пробуем десериализовать через JSON для гибкости (как в complex_create.go)
+	data, err := json.Marshal(cfv)
+	if err != nil {
+		return nil
+	}
+
+	var result []amomodels.CustomFieldValue
+	if err := json.Unmarshal(data, &result); err != nil {
+		// Fallback: пробуем как map field_id -> values
+		for fieldID, values := range cfv {
+			cfValue := amomodels.CustomFieldValue{
+				FieldCode: fieldID,
+			}
+			// Пытаемся распарсить values как массив
+			if valArr, ok := values.([]any); ok {
+				for _, v := range valArr {
+					if valMap, ok := v.(map[string]any); ok {
+						item := amomodels.FieldValueElement{}
+						if val, ok := valMap["value"]; ok {
+							item.Value = val
+						}
+						if enum, ok := valMap["enum_code"].(string); ok {
+							item.EnumCode = enum
+						}
+						cfValue.Values = append(cfValue.Values, item)
+					}
+				}
+			}
+			if len(cfValue.Values) > 0 {
+				result = append(result, cfValue)
+			}
+		}
+	}
+
+	return result
 }

@@ -2,13 +2,13 @@ package models
 
 // CatalogsInput входные параметры для инструмента catalogs
 type CatalogsInput struct {
-	// Action действие: list, get, create, update, list_elements, get_element, create_element, update_element
-	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update, list_elements, get_element, create_element, update_element"`
+	// Action действие: list, get, create, update, list_elements, get_element, create_element, update_element, link_element, unlink_element
+	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update, list_elements, get_element, create_element, update_element, link_element, unlink_element"`
 
-	// CatalogID ID каталога (для get, update, list_elements, get_element, create_element, update_element)
+	// CatalogID ID каталога (для get, update, list_elements, get_element, create_element, update_element, link_element, unlink_element)
 	CatalogID int `json:"catalog_id,omitempty" jsonschema_description:"ID каталога"`
 
-	// ElementID ID элемента (для get_element, update_element)
+	// ElementID ID элемента (для get_element, update_element, link_element, unlink_element)
 	ElementID int `json:"element_id,omitempty" jsonschema_description:"ID элемента каталога"`
 
 	// Filter параметры поиска
@@ -19,13 +19,25 @@ type CatalogsInput struct {
 
 	// ElementData данные элемента (для create_element, update_element)
 	ElementData *CatalogElementData `json:"element_data,omitempty" jsonschema_description:"Данные элемента каталога"`
+
+	// LinkData данные для связи элемента (для link_element, unlink_element)
+	LinkData *ElementLinkData `json:"link_data,omitempty" jsonschema_description:"Данные связи элемента с сущностью"`
 }
 
 // CatalogFilter фильтры поиска
 type CatalogFilter struct {
-	Page  int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	Limit int    `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Query string `json:"query,omitempty" jsonschema_description:"Поисковый запрос (только для элементов)"`
+	Page  int      `json:"page,omitempty" jsonschema_description:"Номер страницы (начиная с 1)"`
+	Limit int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50, максимум 250)"`
+	Query string   `json:"query,omitempty" jsonschema_description:"Поисковый запрос по названию элемента каталога"`
+	IDs   []int    `json:"ids,omitempty" jsonschema_description:"Фильтр по массиву ID элементов"`
+	With  []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные для get_element: invoice_link, supplier_field_values"`
+}
+
+// ElementLinkData данные для связи элемента каталога с сущностью
+type ElementLinkData struct {
+	EntityType string         `json:"entity_type" jsonschema_description:"Тип сущности: leads, contacts, companies, customers"`
+	EntityID   int            `json:"entity_id" jsonschema_description:"ID сущности"`
+	Metadata   map[string]any `json:"metadata,omitempty" jsonschema_description:"Метаданные связи (quantity, price_id и др.)"`
 }
 
 // CatalogData данные каталога

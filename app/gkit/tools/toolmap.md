@@ -4,7 +4,7 @@
 
 ---
 
-## AccountService (`core/services/account.go`)
+## AccountService (`core/adapters/account.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -12,7 +12,7 @@
 
 ---
 
-## CallsService (`core/services/calls.go`)
+## CallsService (`core/adapters/calls.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -21,7 +21,7 @@
 
 ---
 
-## CatalogElementsService (`core/services/catalog_elements.go`)
+## CatalogElementsService (`core/adapters/catalog_elements.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -34,7 +34,7 @@
 
 ---
 
-## CatalogsService (`core/services/catalogs.go`)
+## CatalogsService (`core/adapters/catalogs.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -45,7 +45,7 @@
 
 ---
 
-## ChatTemplatesService (`core/services/chat_templates.go`)
+## ChatTemplatesService (`core/adapters/chat_templates.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -60,7 +60,7 @@
 
 ---
 
-## CompaniesService (`core/services/companies.go`)
+## CompaniesService (`core/adapters/companies.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -75,7 +75,7 @@
 
 ---
 
-## ContactsService (`core/services/contacts.go`)
+## ContactsService (`core/adapters/contacts.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -92,7 +92,7 @@
 
 ---
 
-## CurrenciesService (`core/services/currencies.go`)
+## CurrenciesService (`core/adapters/currencies.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -100,7 +100,7 @@
 
 ---
 
-## CustomFieldGroupsService (`core/services/custom_field_groups.go`)
+## CustomFieldGroupsService (`core/adapters/custom_field_groups.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -112,7 +112,7 @@
 
 ---
 
-## CustomFieldsService (`core/services/custom_fields.go`)
+## CustomFieldsService (`core/adapters/custom_fields.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -124,7 +124,7 @@
 
 ---
 
-## CustomerBonusPointsService (`core/services/customer_bonus_points.go`)
+## CustomerBonusPointsService (`core/adapters/customer_bonus_points.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -134,7 +134,7 @@
 
 ---
 
-## CustomerStatusesService (`core/services/customer_statuses.go`)
+## CustomerStatusesService (`core/adapters/customer_statuses.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -146,7 +146,7 @@
 
 ---
 
-## CustomerTransactionsService (`core/services/customer_transactions.go`)
+## CustomerTransactionsService (`core/adapters/customer_transactions.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -156,7 +156,7 @@
 
 ---
 
-## CustomersService (`core/services/customers.go`)
+## CustomersService (`core/adapters/customers.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -169,7 +169,7 @@
 
 ---
 
-## EntityFilesService (`core/services/entity_files.go`)
+## EntityFilesService (`core/adapters/entity_files.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -179,7 +179,7 @@
 
 ---
 
-## EntitySubscriptionsService (`core/services/entity_subscriptions.go`)
+## EntitySubscriptionsService (`core/adapters/entity_subscriptions.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -189,7 +189,7 @@
 
 ---
 
-## EventTypesService (`core/services/event_types.go`)
+## EventTypesService (`core/adapters/event_types.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -197,7 +197,7 @@
 
 ---
 
-## EventsService (`core/services/events.go`)
+## EventsService (`core/adapters/events.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -206,7 +206,7 @@
 
 ---
 
-## FilesService (`core/services/files.go`)
+## FilesService (`core/adapters/files.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -221,7 +221,7 @@
 
 ---
 
-## LeadsService (`core/services/leads.go`)
+## LeadsService (`core/adapters/leads.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -242,7 +242,7 @@
 
 ---
 
-## LinksService (`core/services/links.go`)
+## LinksService (`core/adapters/links.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -252,7 +252,7 @@
 
 ---
 
-## LossReasonsService (`core/services/loss_reasons.go`)
+## LossReasonsService (`core/adapters/loss_reasons.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -264,7 +264,7 @@
 
 ---
 
-## NotesService (`core/services/notes.go`)
+## NotesService (`core/adapters/notes.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -276,7 +276,7 @@
 
 ---
 
-## PipelinesService (`core/services/pipelines.go`)
+## PipelinesService (`core/adapters/pipelines.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -290,7 +290,7 @@
 
 ---
 
-## StatusesService (`core/services/statuses.go`)
+## StatusesService (`core/adapters/statuses.go`)
 
 Сервис для управления статусами воронок. Доступен через `sdk.Statuses(pipelineID)`.
 
@@ -309,7 +309,7 @@
 
 ---
 
-## ProductsService (`core/services/products.go`)
+## ProductsService (`core/adapters/products.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -326,7 +326,7 @@
 
 ---
 
-## RolesService (`core/services/roles.go`)
+## RolesService (`core/adapters/roles.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -338,7 +338,7 @@
 
 ---
 
-## SegmentsService (`core/services/segments.go`)
+## SegmentsService (`core/adapters/segments.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -349,7 +349,7 @@
 
 ---
 
-## ShortLinksService (`core/services/short_links.go`)
+## ShortLinksService (`core/adapters/short_links.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -359,7 +359,7 @@
 
 ---
 
-## SourcesService (`core/services/sources.go`)
+## SourcesService (`core/adapters/sources.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -371,7 +371,7 @@
 
 ---
 
-## TagsService (`core/services/tags.go`)
+## TagsService (`core/adapters/tags.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -381,7 +381,7 @@
 
 ---
 
-## TalksService (`core/services/talks.go`)
+## TalksService (`core/adapters/talks.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -392,7 +392,7 @@
 
 ---
 
-## TasksService (`core/services/tasks.go`)
+## TasksService (`core/adapters/tasks.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -404,7 +404,7 @@
 
 ---
 
-## UnsortedService (`core/services/unsorted.go`)
+## UnsortedService (`core/adapters/unsorted.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -418,7 +418,7 @@
 
 ---
 
-## UsersService (`core/services/users.go`)
+## UsersService (`core/adapters/users.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -428,7 +428,7 @@
 
 ---
 
-## WebhooksService (`core/services/webhooks.go`)
+## WebhooksService (`core/adapters/webhooks.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -438,7 +438,7 @@
 
 ---
 
-## WebsiteButtonsService (`core/services/website_buttons.go`)
+## WebsiteButtonsService (`core/adapters/website_buttons.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|
@@ -450,7 +450,7 @@
 
 ---
 
-## WidgetsService (`core/services/widgets.go`)
+## WidgetsService (`core/adapters/widgets.go`)
 
 | Method | Params | Returns | Operation |
 |--------|--------|---------|-----------|

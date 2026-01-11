@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/models"
@@ -32,27 +33,51 @@ func (r *Registry) handleProducts(ctx context.Context, input gkitmodels.Products
 		if input.ProductID == 0 {
 			return nil, fmt.Errorf("product_id is required for action 'get'")
 		}
-		return r.productsService.GetProduct(ctx, input.ProductID)
+		var with []string
+		if input.Filter != nil {
+			with = input.Filter.With
+		}
+		return r.productsService.GetProduct(ctx, input.ProductID, with)
 	case "create":
-		if input.Data == nil {
-			return nil, fmt.Errorf("data is required for action 'create'")
+		if input.Data == nil && len(input.Items) == 0 {
+			return nil, fmt.Errorf("data or items is required for action 'create'")
 		}
-		element := &models.CatalogElement{
-			Name: input.Data.Name,
+		var elements []*models.CatalogElement
+
+		// Поддержка одиночного элемента или батча
+		var dataToMarshal any
+		if len(input.Items) > 0 {
+			dataToMarshal = input.Items
+		} else {
+			dataToMarshal = []*gkitmodels.ProductData{input.Data}
 		}
-		if input.Data.SKU != "" {
-			// SKU обычно хранится в кастомных полях, но здесь мы просто мапим Имя
-			// В SDK CatalogElement имеет CustomFieldsValues
+
+		elementData, _ := json.Marshal(dataToMarshal)
+		if err := json.Unmarshal(elementData, &elements); err != nil {
+			return nil, fmt.Errorf("failed to parse elements data: %w", err)
 		}
-		return r.productsService.CreateProducts(ctx, []*models.CatalogElement{element})
+		return r.productsService.CreateProducts(ctx, elements)
 	case "update":
-		if input.ProductID == 0 || input.Data == nil {
-			return nil, fmt.Errorf("product_id and data are required for action 'update'")
+		if (input.ProductID == 0 && input.Data != nil) || (input.Data == nil && len(input.Items) == 0) {
+			return nil, fmt.Errorf("product_id and data (or items for batch) are required for action 'update'")
 		}
-		element := &models.CatalogElement{}
-		element.ID = input.ProductID
-		element.Name = input.Data.Name
-		return r.productsService.UpdateProducts(ctx, []*models.CatalogElement{element})
+
+		var elements []*models.CatalogElement
+		if len(input.Items) > 0 {
+			elementData, _ := json.Marshal(input.Items)
+			if err := json.Unmarshal(elementData, &elements); err != nil {
+				return nil, fmt.Errorf("failed to parse elements data: %w", err)
+			}
+		} else {
+			elementData, _ := json.Marshal(input.Data)
+			var element *models.CatalogElement
+			if err := json.Unmarshal(elementData, &element); err != nil {
+				return nil, fmt.Errorf("failed to parse element data: %w", err)
+			}
+			element.ID = input.ProductID
+			elements = append(elements, element)
+		}
+		return r.productsService.UpdateProducts(ctx, elements)
 	case "delete":
 		if len(input.IDs) == 0 {
 			return nil, fmt.Errorf("ids array is required for action 'delete'")

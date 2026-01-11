@@ -3,18 +3,18 @@ package tools
 import (
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
-	"github.com/tihn/amo-ai-tgbot-go/services/activities"
-	"github.com/tihn/amo-ai-tgbot-go/services/admin_integrations"
-	"github.com/tihn/amo-ai-tgbot-go/services/admin_pipelines"
-	"github.com/tihn/amo-ai-tgbot-go/services/admin_schema"
-	"github.com/tihn/amo-ai-tgbot-go/services/admin_users"
-	"github.com/tihn/amo-ai-tgbot-go/services/catalogs"
-	"github.com/tihn/amo-ai-tgbot-go/services/complex_create"
-	"github.com/tihn/amo-ai-tgbot-go/services/customers"
-	"github.com/tihn/amo-ai-tgbot-go/services/entities"
-	"github.com/tihn/amo-ai-tgbot-go/services/files"
-	"github.com/tihn/amo-ai-tgbot-go/services/products"
-	"github.com/tihn/amo-ai-tgbot-go/services/unsorted"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/activities"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/admin_integrations"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/admin_pipelines"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/admin_schema"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/admin_users"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/catalogs"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/complex_create"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/customers"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/entities"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/files"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/products"
+	"github.com/tihn/amo-ai-tgbot-go/adapters/unsorted"
 )
 
 type Registry struct {
@@ -73,6 +73,7 @@ func (r *Registry) RegisterAll() {
 	r.RegisterEntitiesTool()
 	r.RegisterActivitiesTool()
 	r.RegisterComplexCreateTool()
+	r.RegisterComplexCreateBatchTool()
 	r.RegisterProductsTool()
 	r.RegisterCatalogsTool()
 	r.RegisterFilesTool()

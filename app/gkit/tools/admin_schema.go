@@ -3,9 +3,11 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/models"
 
+	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
@@ -33,13 +35,59 @@ func (r *Registry) RegisterAdminSchemaTool() {
 	))
 }
 
+func buildCustomFieldsFilter(f *gkitmodels.SchemaFilter) *filters.CustomFieldsFilter {
+	if f == nil {
+		return nil
+	}
+	filter := &filters.CustomFieldsFilter{}
+	if f.Limit > 0 {
+		filter.Limit = f.Limit
+	}
+	if f.Page > 0 {
+		filter.Page = f.Page
+	}
+	if len(f.IDs) > 0 {
+		filter.IDs = f.IDs
+	}
+	if len(f.Types) > 0 {
+		filter.Types = f.Types
+	}
+	return filter
+}
+
+func buildSourcesFilter(f *gkitmodels.SchemaFilter) *filters.SourcesFilter {
+	if f == nil {
+		return nil
+	}
+	filter := &filters.SourcesFilter{}
+	if len(f.ExternalIDs) > 0 {
+		filter.ExternalIDs = f.ExternalIDs
+	}
+	return filter
+}
+
+func buildBaseFilter(f *gkitmodels.SchemaFilter) url.Values {
+	if f == nil {
+		return url.Values{}
+	}
+	v := url.Values{}
+	if f.Limit > 0 {
+		v.Add("limit", fmt.Sprintf("%d", f.Limit))
+	}
+	if f.Page > 0 {
+		v.Add("page", fmt.Sprintf("%d", f.Page))
+	}
+	return v
+}
+
 func (r *Registry) handleCustomFields(ctx *ai.ToolContext, input gkitmodels.AdminSchemaInput) (any, error) {
 	if input.EntityType == "" {
 		return nil, fmt.Errorf("entity_type is required for custom_fields")
 	}
 	switch input.Action {
 	case "search", "list":
-		return r.adminSchemaService.ListCustomFields(ctx, input.EntityType)
+		filter := buildCustomFieldsFilter(input.Filter)
+		return r.adminSchemaService.ListCustomFields(ctx, input.EntityType, filter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")
@@ -75,12 +123,13 @@ func (r *Registry) handleFieldGroups(ctx *ai.ToolContext, input gkitmodels.Admin
 	}
 	switch input.Action {
 	case "search", "list":
-		return r.adminSchemaService.ListFieldGroups(ctx, input.EntityType)
+		filter := buildBaseFilter(input.Filter)
+		return r.adminSchemaService.ListFieldGroups(ctx, input.EntityType, filter)
 	case "get":
-		if input.ID == 0 {
-			return nil, fmt.Errorf("id is required for get")
+		if input.GroupID == "" {
+			return nil, fmt.Errorf("group_id is required for get")
 		}
-		return r.adminSchemaService.GetFieldGroup(ctx, input.EntityType, input.ID)
+		return r.adminSchemaService.GetFieldGroup(ctx, input.EntityType, input.GroupID)
 	case "create":
 		var groups []amomodels.CustomFieldGroup
 		data, _ := json.Marshal(input.Data["groups"])
@@ -108,7 +157,8 @@ func (r *Registry) handleFieldGroups(ctx *ai.ToolContext, input gkitmodels.Admin
 func (r *Registry) handleLossReasons(ctx *ai.ToolContext, input gkitmodels.AdminSchemaInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminSchemaService.ListLossReasons(ctx)
+		filter := buildBaseFilter(input.Filter)
+		return r.adminSchemaService.ListLossReasons(ctx, filter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")
@@ -121,13 +171,6 @@ func (r *Registry) handleLossReasons(ctx *ai.ToolContext, input gkitmodels.Admin
 			return nil, fmt.Errorf("failed to parse reasons: %w", err)
 		}
 		return r.adminSchemaService.CreateLossReasons(ctx, reasons)
-	case "update":
-		var reasons []*amomodels.LossReason
-		data, _ := json.Marshal(input.Data["reasons"])
-		if err := json.Unmarshal(data, &reasons); err != nil {
-			return nil, fmt.Errorf("failed to parse reasons: %w", err)
-		}
-		return r.adminSchemaService.UpdateLossReasons(ctx, reasons)
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete")
@@ -141,7 +184,8 @@ func (r *Registry) handleLossReasons(ctx *ai.ToolContext, input gkitmodels.Admin
 func (r *Registry) handleSources(ctx *ai.ToolContext, input gkitmodels.AdminSchemaInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
-		return r.adminSchemaService.ListSources(ctx)
+		filter := buildSourcesFilter(input.Filter)
+		return r.adminSchemaService.ListSources(ctx, filter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")

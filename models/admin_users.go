@@ -20,6 +20,7 @@ type AdminUsersInput struct {
 
 // AdminUsersFilter фильтры для admin_users
 type AdminUsersFilter struct {
-	Limit int `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Page  int `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Limit int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
+	Page  int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	With  []string `json:"with,omitempty" jsonschema_description:"Связанные данные. Для users: role, uuid, group, amojo_id, user_rank, phone_number. Для roles: users."`
 }
