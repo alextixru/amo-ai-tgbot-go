@@ -1,12 +1,12 @@
 root = "."
-tmp_dir = "tmp"
+tmp_dir = ".temp"
 dotenv = ".env"
 
 [build]
-  cmd = "go build -o ./tmp/bot ./cmd/bot"
-  full_bin = "genkit start -- ./tmp/bot"
+  cmd = "go build -o ./.temp/bot ./cmd/bot"
+  full_bin = "genkit start -- ./.temp/bot"
   delay = 1000
-  exclude_dir = ["tmp", "vendor", ".git"]
+  exclude_dir = [".temp", "vendor", ".git"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false

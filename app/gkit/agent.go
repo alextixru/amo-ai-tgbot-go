@@ -7,8 +7,8 @@ import (
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/gkit/flows"
-	"github.com/tihn/amo-ai-tgbot-go/app/gkit/session"
+	"github.com/tihn/amo-ai-tgbot-go/services/flows"
+	"github.com/tihn/amo-ai-tgbot-go/services/session"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/tools"
 	genkitClient "github.com/tihn/amo-ai-tgbot-go/infrastructure/genkit"
 	"github.com/tihn/amo-ai-tgbot-go/adapters/activities"

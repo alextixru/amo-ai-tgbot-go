@@ -11,7 +11,7 @@ import (
 
 	"github.com/tihn/amo-ai-tgbot-go/app/crm"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
-	appctx "github.com/tihn/amo-ai-tgbot-go/app/gkit/context"
+	appctx "github.com/tihn/amo-ai-tgbot-go/services/context"
 )
 
 // Handler processes Telegram messages

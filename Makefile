@@ -11,7 +11,7 @@ run:
 
 # Build
 build:
-	go build -o ./tmp/bot ./cmd/bot
+	go build -o ./.temp/bot ./cmd/bot
 
 clean:
-	rm -rf ./tmp
+	rm -rf ./.temp

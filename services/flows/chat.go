@@ -8,7 +8,7 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/prompts"
-	"github.com/tihn/amo-ai-tgbot-go/app/gkit/session"
+	"github.com/tihn/amo-ai-tgbot-go/services/session"
 )
 
 // ChatInput — вход для Chat Flow
