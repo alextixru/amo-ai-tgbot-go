@@ -5,7 +5,7 @@ go 1.24.11
 require github.com/go-telegram/bot v1.17.0
 
 require (
-	github.com/alextixru/amocrm-sdk-go v1.0.0
+	github.com/alextixru/amocrm-sdk-go v1.0.1
 	github.com/firebase/genkit/go v1.3.0
 	github.com/joho/godotenv v1.5.1
 )
@@ -36,5 +36,3 @@ require (
 	golang.org/x/sys v0.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/alextixru/amocrm-sdk-go => ../amocrm-sdk-go
