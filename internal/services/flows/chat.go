@@ -57,6 +57,14 @@ func DefineChatFlow(
 			}
 
 			// 5. Сохраняем обновлённую историю (включает tool calls и responses)
+			// Check if resp and resp.Message are valid before saving history
+			if resp == nil {
+				return ChatOutput{Response: "Пустой ответ от AI"}, nil
+			}
+			if resp.Message == nil {
+				return ChatOutput{Response: "Ответ без сообщения от AI"}, nil
+			}
+
 			store.Save(input.SessionID, resp.History())
 
 			return ChatOutput{Response: resp.Text()}, nil

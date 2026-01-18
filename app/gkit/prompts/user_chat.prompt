@@ -1,5 +1,4 @@
 ---
-model: ollama/gpt-oss:120b-cloud
 config:
   temperature: 0
 input:

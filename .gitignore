@@ -8,3 +8,4 @@ tokens.json
 .amocrm_tokens.json
 scripts/
 oauth_setup
+.gemini-cli-oauth.json

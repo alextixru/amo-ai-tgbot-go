@@ -8,6 +8,7 @@ import (
 
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers"
+	geminicli "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers/gemini-cli"
 )
 
 // Client wraps Genkit instance and model
@@ -18,17 +19,32 @@ type Client struct {
 
 // New creates a new Genkit client with configured provider
 func New(ctx context.Context, cfg *config.Config) (*Client, error) {
-	// Get plugin for configured provider
-	plugin := providers.OllamaPlugin(cfg)
+	var model ai.Model
+	var g *genkit.Genkit
 
-	// Initialize Genkit with plugin and prompts directory
-	g := genkit.Init(ctx,
-		genkit.WithPlugins(plugin),
-		genkit.WithPromptDir("./app/gkit/prompts"),
-	)
+	switch cfg.AIProvider {
+	case "gemini-cli":
+		gcli, err := geminicli.New(ctx, cfg.GeminiCLICredsPath)
+		if err != nil {
+			return nil, err
+		}
 
-	// Initialize model from provider (using the same plugin instance)
-	model := providers.InitOllama(g, plugin, cfg)
+		g = genkit.Init(ctx,
+			genkit.WithPlugins(gcli),
+			genkit.WithPromptDir("./app/gkit/prompts"),
+		)
+
+		model = gcli.DefineModel(g, "") // Use default model
+	default: // ollama
+		plugin := providers.OllamaPlugin(cfg)
+
+		g = genkit.Init(ctx,
+			genkit.WithPlugins(plugin),
+			genkit.WithPromptDir("./app/gkit/prompts"),
+		)
+
+		model = providers.InitOllama(g, plugin, cfg)
+	}
 
 	return &Client{
 		G:     g,

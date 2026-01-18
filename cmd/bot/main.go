@@ -77,6 +77,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Bot started with Ollama model: %s", cfg.OllamaModel)
+	if cfg.AIProvider == "gemini-cli" {
+		log.Print("Bot started with Gemini CLI provider")
+	} else {
+		log.Printf("Bot started with Ollama model: %s", cfg.OllamaModel)
+	}
 	b.Start(ctx)
 }

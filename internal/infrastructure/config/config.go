@@ -21,6 +21,12 @@ type Config struct {
 	OllamaURL   string
 	OllamaModel string
 
+	// AI Provider selection
+	AIProvider string // "ollama" or "gemini-cli"
+
+	// Gemini CLI settings (Code Assist)
+	GeminiCLICredsPath string // Path to cached OAuth credentials
+
 	// amoCRM
 	AmoCRMAuthMode     AuthMode
 	AmoCRMBaseURL      string
@@ -42,6 +48,8 @@ func Load() *Config {
 		Debug:              os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1",
 		OllamaURL:          getEnvOrDefault("OLLAMA_URL", "http://localhost:11434"),
 		OllamaModel:        getEnvOrDefault("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
+		AIProvider:         getEnvOrDefault("AI_PROVIDER", "ollama"),
+		GeminiCLICredsPath: getEnvOrDefault("GEMINI_CLI_CREDS_PATH", ".gemini-cli-oauth.json"),
 		AmoCRMAuthMode:     authMode,
 		AmoCRMBaseURL:      os.Getenv("AMOCRM_BASE_URL"),
 		AmoCRMToken:        os.Getenv("AMOCRM_ACCESS_TOKEN"),
