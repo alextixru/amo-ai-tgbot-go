@@ -3,7 +3,7 @@ package tools
 import (
 	"encoding/json"
 
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"

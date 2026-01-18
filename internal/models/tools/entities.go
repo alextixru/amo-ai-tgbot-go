@@ -1,6 +1,8 @@
-package models
+package tools
 
-import "github.com/alextixru/amocrm-sdk-go/core/models"
+import (
+	"github.com/alextixru/amocrm-sdk-go/core/models"
+)
 
 // EntitiesInput входные параметры для инструмента entities
 type EntitiesInput struct {

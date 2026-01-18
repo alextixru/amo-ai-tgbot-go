@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 func (s *service) ListRoles(ctx context.Context, filter *gkitmodels.AdminUsersFilter) ([]*amomodels.Role, error) {

@@ -1,4 +1,4 @@
-package models
+package tools
 
 // ProductsInput входные параметры для инструмента products
 type ProductsInput struct {

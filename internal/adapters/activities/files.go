@@ -5,7 +5,7 @@ import (
 
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 func (s *service) ListFiles(ctx context.Context, parent gkitmodels.ParentEntity, filter *gkitmodels.FilesFilter) ([]models.FileLink, error) {

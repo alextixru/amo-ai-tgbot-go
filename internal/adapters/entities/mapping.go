@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 // mapCustomFieldsValues конвертирует map[string]any в []CustomFieldValue

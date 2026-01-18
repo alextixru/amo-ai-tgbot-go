@@ -5,7 +5,7 @@ import (
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 func (s *service) ListUsers(ctx context.Context, filter *gkitmodels.AdminUsersFilter) ([]*amomodels.User, error) {

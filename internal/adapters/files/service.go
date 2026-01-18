@@ -6,7 +6,7 @@ import (
 	"github.com/alextixru/amocrm-sdk-go"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/alextixru/amocrm-sdk-go/core/services"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 type Service interface {

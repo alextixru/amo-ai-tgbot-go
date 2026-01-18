@@ -1,4 +1,4 @@
-package models
+package tools
 
 // AdminPipelinesInput входные параметры для инструмента admin_pipelines
 type AdminPipelinesInput struct {

@@ -1,10 +1,10 @@
-// Package models содержит входные структуры (Input DTOs) для инструментов Genkit.
+// Package models — корневой пакет для структур данных Genkit.
 //
-// Все структуры предназначены для транспортного слоя и содержат теги
-// jsonschema_description, которые используются AI для понимания назначения полей.
+// Структура:
+//   - tools/ — Input DTOs для SDK-инструментов (полные схемы)
+//   - flows/ — Input DTOs для Flow (упрощённые схемы для Main Agent)
 //
 // Принципы:
-//   - Input структуры определяются здесь
+//   - Input структуры содержат jsonschema_description для LLM
 //   - Output — модели из amocrm-sdk-go напрямую
-//   - Общие типы (LinkTarget, ParentEntity) вынесены в common.go
 package models

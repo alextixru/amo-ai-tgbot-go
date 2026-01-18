@@ -1,4 +1,4 @@
-package models
+package tools
 
 // AdminSchemaInput входные параметры для инструмента admin_schema
 type AdminSchemaInput struct {

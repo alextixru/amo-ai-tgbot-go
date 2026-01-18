@@ -1,4 +1,4 @@
-package models
+package tools
 
 // AdminIntegrationsInput входные параметры для инструмента admin_integrations
 type AdminIntegrationsInput struct {

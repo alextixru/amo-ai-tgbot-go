@@ -1,4 +1,4 @@
-package models
+package tools
 
 // CustomersInput входные параметры для инструмента customers
 type CustomersInput struct {

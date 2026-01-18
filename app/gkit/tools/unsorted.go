@@ -7,7 +7,7 @@ import (
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 func (r *Registry) RegisterUnsortedTool() {

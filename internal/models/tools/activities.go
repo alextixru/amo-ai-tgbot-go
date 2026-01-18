@@ -1,4 +1,4 @@
-package models
+package tools
 
 // ActivitiesInput входные параметры для инструмента activities
 type ActivitiesInput struct {

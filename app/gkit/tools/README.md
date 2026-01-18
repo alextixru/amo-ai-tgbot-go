@@ -149,6 +149,20 @@ func (r *Registry) defineGetLead() ai.Tool {
 
 - [ ] Имя в camelCase
 - [ ] Description понятно LLM
-- [ ] Input struct в types.go с `jsonschema_description`
+- [ ] Input struct в `internal/models/tools/` с `jsonschema_description`
 - [ ] Output = SDK модель или alias
 - [ ] Регистрация через Registry
+
+## Структура моделей
+
+```
+internal/models/
+├── tools/           # Input для SDK-инструментов (полные схемы)
+│   ├── entities.go
+│   ├── activities.go
+│   └── ...
+└── flows/           # Input для Flow (упрощённые схемы для Main Agent)
+    ├── base.go
+    ├── entities.go
+    └── ...
+```

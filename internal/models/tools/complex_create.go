@@ -1,4 +1,4 @@
-package models
+package tools
 
 // ComplexCreateInput входные параметры для создания сделки с контактами/компанией
 type ComplexCreateInput struct {

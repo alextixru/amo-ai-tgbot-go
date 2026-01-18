@@ -5,7 +5,7 @@ import (
 
 	"github.com/alextixru/amocrm-sdk-go"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 // Service определяет бизнес-логику для работы с каталогами и их элементами.

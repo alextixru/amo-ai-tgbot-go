@@ -6,7 +6,7 @@ import (
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 	"github.com/tihn/amo-ai-tgbot-go/internal/utils"
 )
 

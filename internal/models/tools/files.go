@@ -1,4 +1,4 @@
-package models
+package tools
 
 // FilesInput входные параметры для инструмента files
 type FilesInput struct {

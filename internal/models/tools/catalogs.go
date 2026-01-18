@@ -1,4 +1,4 @@
-package models
+package tools
 
 // CatalogsInput входные параметры для инструмента catalogs
 type CatalogsInput struct {

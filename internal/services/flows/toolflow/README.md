@@ -137,9 +137,16 @@ FlowInput (что видит Main Agent):
 
 ---
 
+## Текущий статус
+
+Структуры FlowInput уже определены в [`internal/models/flows/`](file:///Users/tihn/amo-ai-tgbot-go/internal/models/flows):
+
+- `base.go` — `FlowMode` (direct/complex), `BaseFlowInput`
+- `entities.go` — `EntitiesFlowInput` (упрощённый input для entities flow)
+
 ## TODO
 
-- [ ] Определить структуры FlowInput для каждого домена
+- [x] Определить структуры FlowInput для каждого домена
 - [ ] Реализовать базовый Flow с mode-routing
 - [ ] Написать промпты для sub-agents
 - [ ] Протестировать на реальных сценариях

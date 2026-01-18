@@ -1,4 +1,4 @@
-package models
+package tools
 
 // LinkTarget цель для связывания сущностей
 // Используется в entities и activities

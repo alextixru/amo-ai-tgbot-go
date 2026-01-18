@@ -1,4 +1,4 @@
-package models
+package tools
 
 // UnsortedInput входные параметры для инструмента unsorted
 type UnsortedInput struct {

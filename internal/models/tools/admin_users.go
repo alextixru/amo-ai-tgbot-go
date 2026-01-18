@@ -1,4 +1,4 @@
-package models
+package tools
 
 // AdminUsersInput входные параметры для инструмента admin_users
 type AdminUsersInput struct {

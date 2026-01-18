@@ -5,7 +5,7 @@ import (
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models"
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
 func (s *service) ListTags(ctx context.Context, entityType string, filter *gkitmodels.TagsFilter) ([]*models.Tag, error) {
