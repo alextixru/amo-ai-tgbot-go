@@ -93,7 +93,7 @@ Specialized flow / agent
 
 | Секция | Что это | Пример |
 |--------|---------|--------|
-| **Input** | Входные данные для action | `{ message, user_context }` |
+| **Input** | Входные данные для action | `{ message }` |
 | **Context** | Auth/session контекст (заполняется при Firebase деплое) | `auth`, `app`, `instanceIdToken` |
 | **Output** | Результат выполнения | `{ response }` |
 | **Attributes** | OpenTelemetry span атрибуты | `trace_id`, `span_id`, `genkit.name` |
@@ -102,11 +102,11 @@ Specialized flow / agent
 
 ```
 chat (Flow) ─── 1.93s
-│   Input:  ChatInput { message, user_context }
+│   Input:  ChatInput { message }
 │   Output: ChatOutput { response }
 │
 └── user_chat (Prompt) ─── 3ms
-    │   Input:  { query, user_context }
+    │   Input:  { query }
     │   Output: rendered prompt
     │
     └── generate (Util) ─── 1.88s
@@ -117,19 +117,6 @@ chat (Flow) ─── 1.93s
                 Input:  messages
                 Output: text
 ```
-
-### Context vs UserContext
-
-- **Context** (в UI) — auth контекст при Firebase деплое. Пустой локально!
-- **UserContext** (наш) — данные пользователя из amoCRM, передаются в Input
-
-### Когда Context заполняется?
-
-| Сценарий | Context |
-|----------|---------|
-| Локальный запуск с Ollama | ❌ Пустой |
-| Firebase Cloud Functions (`onCallGenkit`) | ✅ `auth`, `app` |
-| HTTP server с `ContextProvider` | ✅ Custom auth |
 
 ---
 

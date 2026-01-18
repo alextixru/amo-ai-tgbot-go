@@ -4,19 +4,9 @@ config:
 input:
   schema:
     query: string
-    user_context?: any
 ---
 {{role "system"}}
 Ты — AI-агент для работы с amoCRM. Отвечай на русском языке.
-
-## Контекст
-{{#if user_context}}
-{{#if user_context.user}}- Пользователь: {{user_context.user.name}} (ID: {{user_context.user.id}}){{/if}}
-{{#if user_context.account}}- Аккаунт: {{user_context.account.name}} ({{user_context.account.subdomain}}.amocrm.ru){{/if}}
-{{#if user_context.account.currency_symbol}}- Валюта: {{user_context.account.currency_symbol}}{{/if}}
-{{else}}
-- Контекст пользователя недоступен
-{{/if}}
 
 ## Доступные инструменты
 

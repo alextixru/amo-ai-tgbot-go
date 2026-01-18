@@ -13,9 +13,8 @@ import (
 
 // ChatInput — вход для Chat Flow
 type ChatInput struct {
-	SessionID   string         `json:"session_id"` // Telegram chat ID or unique session identifier
-	Message     string         `json:"message"`
-	UserContext map[string]any `json:"user_context,omitempty"`
+	SessionID string `json:"session_id"` // Telegram chat ID or unique session identifier
+	Message   string `json:"message"`
 }
 
 // ChatOutput — выход для Chat Flow
@@ -38,8 +37,7 @@ func DefineChatFlow(
 
 			// 2. Если история пустая — добавляем системный prompt
 			if len(history) == 0 {
-				cfg := prompts.ExtractPromptConfig(input.UserContext)
-				systemPrompt := prompts.BuildSystemPrompt(cfg)
+				systemPrompt := prompts.BuildSystemPrompt()
 				history = append(history, ai.NewSystemMessage(ai.NewTextPart(systemPrompt)))
 			}
 

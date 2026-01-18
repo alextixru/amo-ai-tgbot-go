@@ -7,10 +7,7 @@ import (
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/flows"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/session"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit/tools"
-	genkitClient "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/activities"
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/admin_integrations"
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/admin_pipelines"
@@ -23,6 +20,9 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/files"
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/products"
 	"github.com/tihn/amo-ai-tgbot-go/internal/adapters/unsorted"
+	genkitClient "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/flows"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/session"
 )
 
 // Agent handles AI processing with Genkit flows
@@ -84,11 +84,10 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 
 // Process processes a user message using the chat flow with user context
 // sessionID should be unique per conversation (e.g., Telegram chat ID)
-func (a *Agent) Process(ctx context.Context, sessionID, message string, userContext map[string]any) (string, error) {
+func (a *Agent) Process(ctx context.Context, sessionID, message string) (string, error) {
 	output, err := a.chatFlow(ctx, flows.ChatInput{
-		SessionID:   sessionID,
-		Message:     message,
-		UserContext: userContext,
+		SessionID: sessionID,
+		Message:   message,
 	})
 	if err != nil {
 		return "", err
