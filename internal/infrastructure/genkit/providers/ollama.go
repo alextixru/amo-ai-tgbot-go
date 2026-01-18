@@ -5,7 +5,7 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/firebase/genkit/go/plugins/ollama"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
+	"github.com/tihn/amo-ai-tgbot-go/config"
 )
 
 // InitOllama initializes Ollama provider and returns the model

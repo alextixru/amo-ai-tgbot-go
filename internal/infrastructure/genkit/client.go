@@ -6,7 +6,7 @@ import (
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
+	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers"
 	geminicli "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers/gemini-cli"
 )

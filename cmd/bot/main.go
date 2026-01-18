@@ -11,7 +11,7 @@ import (
 
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
-	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/config"
+	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
 	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
