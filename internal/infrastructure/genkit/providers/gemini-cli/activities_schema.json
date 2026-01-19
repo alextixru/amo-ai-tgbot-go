@@ -1,0 +1,520 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tihn/amo-ai-tgbot-go/internal/models/tools/activities-input",
+  "properties": {
+    "parent": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Тип: leads, contacts, companies"
+        },
+        "id": {
+          "type": "integer",
+          "description": "ID сущности"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "description": "Родительская сущность {type: leads|contacts|companies, id: number}"
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "tasks",
+        "notes",
+        "calls",
+        "events",
+        "files",
+        "links",
+        "tags",
+        "subscriptions",
+        "talks"
+      ],
+      "description": "Слой активности"
+    },
+    "action": {
+      "type": "string",
+      "description": "Действие: list, get, create, update, complete, link, unlink, subscribe, unsubscribe, close — зависит от layer"
+    },
+    "id": {
+      "type": "integer",
+      "description": "ID элемента (для get, update, complete)"
+    },
+    "task_data": {
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Текст задачи (обязательно)"
+        },
+        "responsible_user_id": {
+          "type": "integer",
+          "description": "ID ответственного"
+        },
+        "task_type_id": {
+          "type": "integer",
+          "description": "ID типа задачи (1=звонок, 2=встреча, 3=письмо)"
+        },
+        "deadline": {
+          "type": "string",
+          "description": "Срок выполнения: 'today', 'tomorrow', 'in 2 hours', 'in 3 days', '2024-01-15', '2024-01-15T14:00'"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "description": "Данные задачи (layer=tasks)"
+    },
+    "note_data": {
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Текст примечания (обязательно)"
+        },
+        "note_type": {
+          "type": "string",
+          "enum": [
+            "common",
+            "call_in",
+            "call_out",
+            "service_message"
+          ],
+          "description": "Тип примечания (по умолчанию common)"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "description": "Данные примечания (layer=notes)"
+    },
+    "call_data": {
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound"
+          ],
+          "description": "Направление звонка: inbound=входящий, outbound=исходящий"
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Длительность звонка (секунды)"
+        },
+        "source": {
+          "type": "string",
+          "description": "Источник звонка"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Номер телефона"
+        },
+        "call_result": {
+          "type": "string",
+          "description": "Результат звонка"
+        },
+        "call_status": {
+          "type": "integer",
+          "description": "Статус: 1=успех, 2=занято, 3=нет ответа, 4=не удалось, 5=голосовая почта, 6=неправильный номер"
+        },
+        "unique_id": {
+          "type": "string",
+          "description": "Уникальный ID звонка"
+        },
+        "record_url": {
+          "type": "string",
+          "description": "Ссылка на запись звонка"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "direction",
+        "duration",
+        "phone"
+      ],
+      "description": "Данные звонка (layer=calls)"
+    },
+    "tasks_data": {
+      "items": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Текст задачи (обязательно)"
+          },
+          "responsible_user_id": {
+            "type": "integer",
+            "description": "ID ответственного"
+          },
+          "task_type_id": {
+            "type": "integer",
+            "description": "ID типа задачи (1=звонок, 2=встреча, 3=письмо)"
+          },
+          "deadline": {
+            "type": "string",
+            "description": "Срок выполнения: 'today', 'tomorrow', 'in 2 hours', 'in 3 days', '2024-01-15', '2024-01-15T14:00'"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ]
+      },
+      "type": "array",
+      "description": "Массив данных задач для батч-создания (layer=tasks)"
+    },
+    "notes_data": {
+      "items": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Текст примечания (обязательно)"
+          },
+          "note_type": {
+            "type": "string",
+            "enum": [
+              "common",
+              "call_in",
+              "call_out",
+              "service_message"
+            ],
+            "description": "Тип примечания (по умолчанию common)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ]
+      },
+      "type": "array",
+      "description": "Массив данных примечаний для батч-создания (layer=notes)"
+    },
+    "tag_names": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "description": "Список названий тегов для батч-создания (layer=tags)"
+    },
+    "links_to": {
+      "items": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Тип целевой сущности: leads, contacts, companies"
+          },
+          "id": {
+            "type": "integer",
+            "description": "ID целевой сущности"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      "type": "array",
+      "description": "Цели для батч-связывания (layer=links)"
+    },
+    "filter": {
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Лимит записей (до 50)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Номер страницы"
+        },
+        "order": {
+          "type": "string",
+          "enum": [
+            "complete_till",
+            "created_at"
+          ],
+          "description": "Поле сортировки (по умолчанию complete_till)"
+        },
+        "order_dir": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "description": "Направление сортировки (по умолчанию asc)"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ID конкретных задач"
+        },
+        "responsible_user_id": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ID ответственных"
+        },
+        "is_completed": {
+          "type": "boolean",
+          "description": "Статус завершения (true/false)"
+        },
+        "task_type_id": {
+          "type": "integer",
+          "description": "ID типа задачи"
+        },
+        "date_range": {
+          "type": "string",
+          "enum": [
+            "today",
+            "tomorrow",
+            "overdue",
+            "this_week",
+            "next_week"
+          ],
+          "description": "Диапазон дат (клиентская фильтрация)"
+        },
+        "query": {
+          "type": "string",
+          "description": "Поисковый запрос (влияет только на лимиты в задачах)"
+        },
+        "updated_at": {
+          "type": "integer",
+          "description": "Фильтр по дате изменения (timestamp)"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для задач (layer=tasks)"
+    },
+    "events_filter": {
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Лимит записей (до 100)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Номер страницы"
+        },
+        "types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Типы событий: lead_added, lead_status_changed, contact_added, etc."
+        },
+        "created_by": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ID создателей событий"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для событий (layer=events)"
+    },
+    "notes_filter": {
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Лимит записей (до 50)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Номер страницы"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ID конкретных примечаний"
+        },
+        "note_types": {
+          "items": {
+            "type": "string",
+            "enum": [
+              "common",
+              "call_in",
+              "call_out",
+              "service_message"
+            ]
+          },
+          "type": "array",
+          "description": "Типы примечаний"
+        },
+        "updated_at": {
+          "type": "integer",
+          "description": "Фильтр по дате изменения (timestamp)"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для примечаний (layer=notes)"
+    },
+    "tags_filter": {
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Лимит записей (до 50)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Номер страницы"
+        },
+        "query": {
+          "type": "string",
+          "description": "Поиск по названию (частичное совпадение)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Фильтр по точному названию тега"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ID конкретных тегов"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для тегов (layer=tags)"
+    },
+    "files_filter": {
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Лимит записей (до 50)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Номер страницы"
+        },
+        "extensions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Расширения файлов: pdf, docx, xlsx"
+        },
+        "term": {
+          "type": "string",
+          "description": "Поисковый термин (имя файла)"
+        },
+        "uuid": {
+          "type": "string",
+          "description": "UUID конкретного файла"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для файлов (layer=files)"
+    },
+    "links_filter": {
+      "properties": {
+        "to_entity_type": {
+          "type": "string",
+          "description": "Тип связанной сущности: leads, contacts, companies, catalog_elements"
+        },
+        "to_entity_id": {
+          "type": "integer",
+          "description": "ID конкретной связанной сущности"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Фильтры для связей (layer=links)"
+    },
+    "result_text": {
+      "type": "string",
+      "description": "Текст результата (для tasks.complete)"
+    },
+    "force_close": {
+      "type": "boolean",
+      "description": "Принудительное закрытие беседы (для talks.close)"
+    },
+    "with": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "description": "Связанные данные (например: contact, lead для задач)"
+    },
+    "user_ids": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array",
+      "description": "ID пользователей (для subscribe)"
+    },
+    "user_id": {
+      "type": "integer",
+      "description": "ID пользователя (для unsubscribe)"
+    },
+    "file_uuids": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "description": "UUID файлов (для files.link)"
+    },
+    "file_uuid": {
+      "type": "string",
+      "description": "UUID файла (для files.unlink)"
+    },
+    "talk_id": {
+      "type": "string",
+      "description": "ID чата (для talks.close)"
+    },
+    "link_to": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Тип целевой сущности: leads, contacts, companies"
+        },
+        "id": {
+          "type": "integer",
+          "description": "ID целевой сущности"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "description": "Цель связывания (для links.link/unlink)"
+    },
+    "tag_name": {
+      "type": "string",
+      "description": "Название тега (для tags.create)"
+    },
+    "tag_id": {
+      "type": "integer",
+      "description": "ID тега (для tags.delete)"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "layer",
+    "action"
+  ]
+}

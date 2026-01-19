@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 )
 
@@ -12,19 +14,38 @@ import (
 type Service struct {
 	agent *gkit.Agent
 	crm   *crm.Service
+	auth  *auth.Service
 }
 
 // NewService creates a new Telegram service
-func NewService(agent *gkit.Agent, crmService *crm.Service) *Service {
+func NewService(agent *gkit.Agent, crmService *crm.Service, authService *auth.Service) *Service {
 	return &Service{
 		agent: agent,
 		crm:   crmService,
+		auth:  authService,
 	}
 }
 
-// HandleStart returns the start message
-func (s *Service) HandleStart() string {
-	return `👋 Привет! Я amoCRM AI бот.
+// HandleStart returns the start message with connect button
+func (s *Service) HandleStart(telegramUserID int64) (string, *models.InlineKeyboardMarkup) {
+	isAuth := s.auth.IsAuthenticated(telegramUserID)
+
+	var buttonText, buttonData string
+	if isAuth {
+		buttonText = "⚙️ Управление Google"
+		buttonData = "auth_panel"
+	} else {
+		buttonText = "🔗 Подключить Google"
+		buttonData = "auth_start"
+	}
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: buttonText, CallbackData: buttonData},
+		}},
+	}
+
+	message := `👋 Привет! Я amoCRM AI бот.
 
 📋 Доступные команды:
 • /status — проверить подключение к amoCRM
@@ -32,7 +53,182 @@ func (s *Service) HandleStart() string {
 • /pipelines — список воронок и статусов
 
 💬 Или просто напиши мне что-нибудь — я отвечу через AI!`
+
+	return message, keyboard
 }
+
+// === Auth Screens ===
+
+// ShowAuthPanel shows the main auth management panel
+func (s *Service) ShowAuthPanel(telegramUserID int64) (string, *models.InlineKeyboardMarkup) {
+	isAuth := s.auth.IsAuthenticated(telegramUserID)
+
+	if isAuth {
+		// Authorized state - show email
+		email := s.auth.GetUserEmail(telegramUserID)
+		var accountInfo string
+		if email != "" {
+			accountInfo = fmt.Sprintf("\n\n📧 <b>%s</b>", email)
+		}
+
+		message := fmt.Sprintf(`✅ <b>Google аккаунт подключён</b>%s
+
+Ты можешь использовать AI запросы.`, accountInfo)
+
+		keyboard := &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: "🔄 Переподключить", CallbackData: "auth_start"}},
+				{{Text: "❌ Отключить", CallbackData: "auth_disconnect"}},
+				{{Text: "⬅️ Назад", CallbackData: "back_main"}},
+			},
+		}
+		return message, keyboard
+	}
+
+	// Not authorized state
+	message := `🔐 <b>Google аккаунт не подключён</b>
+
+Подключи аккаунт для использования AI.`
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "🔗 Подключить", CallbackData: "auth_start"}},
+			{{Text: "⬅️ Назад", CallbackData: "back_main"}},
+		},
+	}
+	return message, keyboard
+}
+
+// ShowAuthWaiting shows the waiting for code screen
+func (s *Service) ShowAuthWaiting(telegramUserID, chatID int64) (string, *models.InlineKeyboardMarkup) {
+	authURL, err := s.auth.StartAuth(telegramUserID, chatID)
+	if err != nil {
+		return fmt.Sprintf("❌ Ошибка запуска авторизации:\n%v", err), nil
+	}
+
+	message := `🔐 <b>Авторизация Google</b>
+
+1️⃣ Нажми кнопку "Открыть ссылку"
+2️⃣ Выбери Google аккаунт
+3️⃣ Разреши доступ
+4️⃣ Скопируй код со страницы
+5️⃣ <b>Отправь мне код сообщением</b>
+
+⏱ Код действителен 5 минут.`
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "🔓 Открыть ссылку", URL: authURL}},
+			{{Text: "❌ Отменить", CallbackData: "auth_cancel"}},
+		},
+	}
+	return message, keyboard
+}
+
+// ShowAuthSuccess shows the success screen after authorization
+func (s *Service) ShowAuthSuccess() (string, *models.InlineKeyboardMarkup) {
+	message := `✅ <b>Google аккаунт успешно подключён!</b>
+
+Теперь AI запросы будут выполняться от твоего имени.`
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "⬅️ В главное меню", CallbackData: "back_main"}},
+		},
+	}
+	return message, keyboard
+}
+
+// ShowAuthCanceled shows the canceled screen
+func (s *Service) ShowAuthCanceled() (string, *models.InlineKeyboardMarkup) {
+	message := `❌ Авторизация отменена.`
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "🔗 Попробовать снова", CallbackData: "auth_start"}},
+			{{Text: "⬅️ Назад", CallbackData: "back_main"}},
+		},
+	}
+	return message, keyboard
+}
+
+// ShowAuthDisconnected shows the disconnected screen
+func (s *Service) ShowAuthDisconnected() (string, *models.InlineKeyboardMarkup) {
+	message := `✅ Google аккаунт отключён.`
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "🔗 Подключить снова", CallbackData: "auth_start"}},
+			{{Text: "⬅️ Назад", CallbackData: "back_main"}},
+		},
+	}
+	return message, keyboard
+}
+
+// === Auth Actions ===
+
+// HandleAuthCode processes the authorization code (called when user sends text while waiting)
+func (s *Service) HandleAuthCode(ctx context.Context, telegramUserID int64, code string) (string, *models.InlineKeyboardMarkup) {
+	if err := s.auth.CompleteAuth(ctx, telegramUserID, code); err != nil {
+		message := fmt.Sprintf("❌ <b>Ошибка авторизации</b>\n\n%v", err)
+		keyboard := &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: "🔄 Попробовать снова", CallbackData: "auth_start"}},
+				{{Text: "⬅️ Назад", CallbackData: "back_main"}},
+			},
+		}
+		return message, keyboard
+	}
+	return s.ShowAuthSuccess()
+}
+
+// CancelAuth cancels the pending auth
+func (s *Service) CancelAuth(telegramUserID int64) (string, *models.InlineKeyboardMarkup) {
+	_ = s.auth.CancelAuth(telegramUserID)
+	return s.ShowAuthCanceled()
+}
+
+// Disconnect removes the user's tokens
+func (s *Service) Disconnect(telegramUserID int64) (string, *models.InlineKeyboardMarkup) {
+	_ = s.auth.Logout(telegramUserID)
+	return s.ShowAuthDisconnected()
+}
+
+// IsWaitingCode returns true if user is waiting to enter auth code
+func (s *Service) IsWaitingCode(telegramUserID int64) bool {
+	return s.auth.IsWaitingCode(telegramUserID)
+}
+
+// === Legacy command handlers (kept for backward compatibility) ===
+
+// HandleConnect starts the Google OAuth flow (legacy)
+func (s *Service) HandleConnect(telegramUserID, chatID int64) (string, *models.InlineKeyboardMarkup) {
+	return s.ShowAuthWaiting(telegramUserID, chatID)
+}
+
+// HandleAuth completes the OAuth flow with the provided code (legacy)
+func (s *Service) HandleAuth(ctx context.Context, telegramUserID int64, code string) string {
+	msg, _ := s.HandleAuthCode(ctx, telegramUserID, code)
+	return msg
+}
+
+// HandleMe returns information about the connected account (legacy)
+func (s *Service) HandleMe(telegramUserID int64) string {
+	if !s.auth.IsAuthenticated(telegramUserID) {
+		return "❌ Google аккаунт не подключён.\n\nИспользуй /connect для авторизации."
+	}
+	return "✅ Google аккаунт подключён.\n\nДля отключения используй /disconnect"
+}
+
+// HandleDisconnect removes the user's tokens (legacy)
+func (s *Service) HandleDisconnect(telegramUserID int64) string {
+	if err := s.auth.Logout(telegramUserID); err != nil {
+		return fmt.Sprintf("❌ Ошибка отключения:\n%v", err)
+	}
+	return "✅ Google аккаунт отключён."
+}
+
+// === CRM Handlers ===
 
 // HandleHealthcheck checks CRM connectivity
 func (s *Service) HandleHealthcheck(ctx context.Context) string {
@@ -63,7 +259,11 @@ func (s *Service) HandlePipelines(ctx context.Context) string {
 
 // ProcessAI processes a message through the AI agent
 func (s *Service) ProcessAI(ctx context.Context, telegramUserID int64, chatID int64, text string) (string, error) {
-	// Process with AI (chatID as sessionID for history)
 	sessionID := fmt.Sprintf("tg_%d", chatID)
 	return s.agent.Process(ctx, sessionID, text)
+}
+
+// IsAuthenticated returns true if the user has a valid Google token
+func (s *Service) IsAuthenticated(telegramUserID int64) bool {
+	return s.auth.IsAuthenticated(telegramUserID)
 }

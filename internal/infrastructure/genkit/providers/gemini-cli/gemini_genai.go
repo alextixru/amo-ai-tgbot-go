@@ -290,6 +290,27 @@ func toGeminiSchema(originalSchema map[string]any, genkitSchema map[string]any) 
 				if !ok {
 					continue
 				}
+				// Handle $ref inside anyOf
+				if ref, hasRef := subSchema["$ref"]; hasRef {
+					if refStr, ok := ref.(string); ok {
+						resolved, err := resolveRef(originalSchema, refStr)
+						if err == nil && resolved != nil {
+							if resolvedType, hasType := resolved["type"]; hasType {
+								if typeStr, isString := resolvedType.(string); isString && typeStr != "null" {
+									// Copy title and description from parent
+									if title, ok := genkitSchema["title"]; ok {
+										resolved["title"] = title
+									}
+									if description, ok := genkitSchema["description"]; ok {
+										resolved["description"] = description
+									}
+									return toGeminiSchema(originalSchema, resolved)
+								}
+							}
+						}
+					}
+					continue
+				}
 				if subSchemaType, hasType := subSchema["type"]; hasType {
 					if typeStr, isString := subSchemaType.(string); isString && typeStr != "null" {
 						// Copy title and description from parent
@@ -306,14 +327,69 @@ func toGeminiSchema(originalSchema map[string]any, genkitSchema map[string]any) 
 		}
 	}
 
+	// Handle "oneOf" subschemas (same logic as anyOf - take first valid option)
+	if v, ok := genkitSchema["oneOf"]; ok {
+		if oneOfList, isList := v.([]any); isList {
+			for _, item := range oneOfList {
+				subSchema, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				// Handle $ref inside oneOf
+				if ref, hasRef := subSchema["$ref"]; hasRef {
+					if refStr, ok := ref.(string); ok {
+						resolved, err := resolveRef(originalSchema, refStr)
+						if err == nil && resolved != nil {
+							if resolvedType, hasType := resolved["type"]; hasType {
+								if typeStr, isString := resolvedType.(string); isString && typeStr != "null" {
+									if title, ok := genkitSchema["title"]; ok {
+										resolved["title"] = title
+									}
+									if description, ok := genkitSchema["description"]; ok {
+										resolved["description"] = description
+									}
+									return toGeminiSchema(originalSchema, resolved)
+								}
+							}
+						}
+					}
+					continue
+				}
+				if subSchemaType, hasType := subSchema["type"]; hasType {
+					if typeStr, isString := subSchemaType.(string); isString && typeStr != "null" {
+						if title, ok := genkitSchema["title"]; ok {
+							subSchema["title"] = title
+						}
+						if description, ok := genkitSchema["description"]; ok {
+							subSchema["description"] = description
+						}
+						return toGeminiSchema(originalSchema, subSchema)
+					}
+				}
+			}
+		}
+	}
+
 	schema := &genai.Schema{}
 	typeVal, ok := genkitSchema["type"]
 	if !ok {
-		// No type field - this can happen with boolean schemas or unresolved anyOf
-		// Return a permissive schema that accepts any value
-		schema.Type = genai.TypeString
-		schema.Description = "Any value (flexible type)"
-		return schema, nil
+		// Try to infer type from structure
+		// If schema has "properties" or "additionalProperties", it's an object
+		_, hasProperties := genkitSchema["properties"]
+		_, hasAdditionalProps := genkitSchema["additionalProperties"]
+		if hasProperties || hasAdditionalProps {
+			typeVal = "object"
+			ok = true
+		} else if _, hasItems := genkitSchema["items"]; hasItems {
+			// If schema has "items", it's an array
+			typeVal = "array"
+			ok = true
+		}
+	}
+	if !ok {
+		// BUG FIX #3.1: Return strict error instead of permissive fallback.
+		// This ensures broken schemas are caught early (Fail Fast principle).
+		return nil, fmt.Errorf("schema is missing 'type' field and could not be resolved via anyOf/oneOf: %#v", genkitSchema)
 	}
 
 	typeStr, _ := typeVal.(string)

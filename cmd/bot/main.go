@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
@@ -14,6 +15,7 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
 	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
@@ -51,6 +53,20 @@ func main() {
 		log.Fatalf("Failed to init CRM client: %v", err)
 	}
 
+	// === Auth Service ===
+
+	// Token storage directory (using ~/.gemini for consistency with gemini-cli)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("Failed to get home directory: %v", err)
+	}
+	tokenDir := filepath.Join(home, ".gemini")
+
+	// Create auth service with in-memory state store and file-based token store
+	stateStore := auth.NewMemoryStateStore()
+	tokenStore := auth.NewFileTokenStore(tokenDir)
+	authService := auth.NewService(stateStore, tokenStore)
+
 	// === Application ===
 
 	// CRM service (business logic)
@@ -60,7 +76,7 @@ func main() {
 	agent := gkit.NewAgent(genkitClient, crmClient.SDK())
 
 	// Telegram service (business logic)
-	telegramSvc := telegram.NewService(agent, crmService)
+	telegramSvc := telegram.NewService(agent, crmService, authService)
 
 	// Telegram handler
 	handler := tgHandler.NewHandler(telegramSvc, cfg.Debug)
@@ -76,6 +92,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Register callback handler for inline buttons
+	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, "", bot.MatchTypePrefix, handler.HandleCallback)
 
 	if cfg.AIProvider == "gemini-cli" {
 		log.Print("Bot started with Gemini CLI provider")

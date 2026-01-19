@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers/gemini-cli/oauth"
 	"golang.org/x/oauth2"
 	"google.golang.org/genai"
 )
@@ -44,7 +46,7 @@ func (t *userAgentTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 }
 
 func NewClient(ctx context.Context, opts ClientOptions) (*Client, error) {
-	ts, err := GetTokenSource(ctx, opts.CredsPath, opts.NoBrowser)
+	ts, err := oauth.GetTokenSource(ctx, opts.CredsPath, opts.NoBrowser)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token source: %v", err)
 	}
@@ -131,24 +133,32 @@ type VertexGenerateRequest struct {
 	GenerationConfig  *GenerationConfig      `json:"generationConfig,omitempty"`
 	SessionID         string                 `json:"session_id,omitempty"`
 	CachedContent     string                 `json:"cachedContent,omitempty"`
+	Labels            map[string]string      `json:"labels,omitempty"`
 }
 
 // GenerationConfig is a subset of SDK config that matches internal API
 type GenerationConfig struct {
-	Temperature        *float32              `json:"temperature,omitempty"`
-	TopP               *float32              `json:"topP,omitempty"`
-	TopK               *float32              `json:"topK,omitempty"`
-	CandidateCount     int32                 `json:"candidateCount,omitempty"`
-	MaxOutputTokens    int32                 `json:"maxOutputTokens,omitempty"`
-	StopSequences      []string              `json:"stopSequences,omitempty"`
-	ResponseMIMEType   string                `json:"responseMimeType,omitempty"`
-	ThinkingConfig     *genai.ThinkingConfig `json:"thinkingConfig,omitempty"`
-	PresencePenalty    *float32              `json:"presencePenalty,omitempty"`
-	FrequencyPenalty   *float32              `json:"frequencyPenalty,omitempty"`
-	Seed               *int32                `json:"seed,omitempty"`
-	ResponseModalities []string              `json:"responseModalities,omitempty"`
-	ResponseLogprobs   bool                  `json:"responseLogprobs,omitempty"`
-	Logprobs           *int32                `json:"logprobs,omitempty"`
+	Temperature          *float32                             `json:"temperature,omitempty"`
+	TopP                 *float32                             `json:"topP,omitempty"`
+	TopK                 *float32                             `json:"topK,omitempty"`
+	CandidateCount       int32                                `json:"candidateCount,omitempty"`
+	MaxOutputTokens      int32                                `json:"maxOutputTokens,omitempty"`
+	StopSequences        []string                             `json:"stopSequences,omitempty"`
+	ResponseMIMEType     string                               `json:"responseMimeType,omitempty"`
+	ThinkingConfig       *genai.ThinkingConfig                `json:"thinkingConfig,omitempty"`
+	PresencePenalty      *float32                             `json:"presencePenalty,omitempty"`
+	FrequencyPenalty     *float32                             `json:"frequencyPenalty,omitempty"`
+	Seed                 *int32                               `json:"seed,omitempty"`
+	ResponseModalities   []string                             `json:"responseModalities,omitempty"`
+	ResponseLogprobs     bool                                 `json:"responseLogprobs,omitempty"`
+	Logprobs             *int32                               `json:"logprobs,omitempty"`
+	ResponseJsonSchema   any                                  `json:"responseJsonSchema,omitempty"`
+	ResponseSchema       *genai.Schema                        `json:"responseSchema,omitempty"`
+	RoutingConfig        *genai.GenerationConfigRoutingConfig `json:"routingConfig,omitempty"`
+	ModelSelectionConfig *genai.ModelSelectionConfig          `json:"modelSelectionConfig,omitempty"`
+	MediaResolution      genai.MediaResolution                `json:"mediaResolution,omitempty"`
+	SpeechConfig         *genai.SpeechConfig                  `json:"speechConfig,omitempty"`
+	AudioTimestamp       bool                                 `json:"audioTimestamp,omitempty"`
 }
 
 // CAResponse wraps the response from Code Assist API
@@ -207,19 +217,33 @@ func (c *Client) Generate(ctx context.Context, model string, contents []*genai.C
 	// Apply config fields to request
 	if config != nil {
 		innerReq.GenerationConfig = &GenerationConfig{
-			Temperature:      config.Temperature,
-			TopP:             config.TopP,
-			TopK:             config.TopK,
-			CandidateCount:   config.CandidateCount,
-			MaxOutputTokens:  config.MaxOutputTokens,
-			StopSequences:    config.StopSequences,
-			ResponseMIMEType: config.ResponseMIMEType,
-			ThinkingConfig:   config.ThinkingConfig,
+			Temperature:          config.Temperature,
+			TopP:                 config.TopP,
+			TopK:                 config.TopK,
+			CandidateCount:       config.CandidateCount,
+			MaxOutputTokens:      config.MaxOutputTokens,
+			StopSequences:        config.StopSequences,
+			ResponseMIMEType:     config.ResponseMIMEType,
+			ThinkingConfig:       config.ThinkingConfig,
+			PresencePenalty:      config.PresencePenalty,
+			FrequencyPenalty:     config.FrequencyPenalty,
+			Seed:                 config.Seed,
+			ResponseModalities:   config.ResponseModalities,
+			ResponseLogprobs:     config.ResponseLogprobs,
+			Logprobs:             config.Logprobs,
+			ResponseJsonSchema:   config.ResponseJsonSchema,
+			ResponseSchema:       config.ResponseSchema,
+			RoutingConfig:        config.RoutingConfig,
+			ModelSelectionConfig: config.ModelSelectionConfig,
+			MediaResolution:      config.MediaResolution,
+			SpeechConfig:         config.SpeechConfig,
+			AudioTimestamp:       config.AudioTimestamp,
 		}
 		innerReq.SystemInstruction = config.SystemInstruction
 		innerReq.Tools = config.Tools
 		innerReq.ToolConfig = config.ToolConfig
 		innerReq.SafetySettings = config.SafetySettings
+		innerReq.Labels = config.Labels
 	}
 
 	// Wrap in Code Assist format
@@ -318,19 +342,33 @@ func (c *Client) GenerateStream(ctx context.Context, model string, contents []*g
 
 	if config != nil {
 		innerReq.GenerationConfig = &GenerationConfig{
-			Temperature:      config.Temperature,
-			TopP:             config.TopP,
-			TopK:             config.TopK,
-			CandidateCount:   config.CandidateCount,
-			MaxOutputTokens:  config.MaxOutputTokens,
-			StopSequences:    config.StopSequences,
-			ResponseMIMEType: config.ResponseMIMEType,
-			ThinkingConfig:   config.ThinkingConfig,
+			Temperature:          config.Temperature,
+			TopP:                 config.TopP,
+			TopK:                 config.TopK,
+			CandidateCount:       config.CandidateCount,
+			MaxOutputTokens:      config.MaxOutputTokens,
+			StopSequences:        config.StopSequences,
+			ResponseMIMEType:     config.ResponseMIMEType,
+			ThinkingConfig:       config.ThinkingConfig,
+			PresencePenalty:      config.PresencePenalty,
+			FrequencyPenalty:     config.FrequencyPenalty,
+			Seed:                 config.Seed,
+			ResponseModalities:   config.ResponseModalities,
+			ResponseLogprobs:     config.ResponseLogprobs,
+			Logprobs:             config.Logprobs,
+			ResponseJsonSchema:   config.ResponseJsonSchema,
+			ResponseSchema:       config.ResponseSchema,
+			RoutingConfig:        config.RoutingConfig,
+			ModelSelectionConfig: config.ModelSelectionConfig,
+			MediaResolution:      config.MediaResolution,
+			SpeechConfig:         config.SpeechConfig,
+			AudioTimestamp:       config.AudioTimestamp,
 		}
 		innerReq.SystemInstruction = config.SystemInstruction
 		innerReq.Tools = config.Tools
 		innerReq.ToolConfig = config.ToolConfig
 		innerReq.SafetySettings = config.SafetySettings
+		innerReq.Labels = config.Labels
 	}
 
 	caReq := &CARequest{
@@ -415,6 +453,8 @@ func (c *Client) postWithRetry(ctx context.Context, method string, body any, out
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.IsRetryable() && attempt < maxRetries {
 			delay := baseDelay * time.Duration(1<<attempt)
+			jitter := time.Duration(rand.Int63n(int64(delay / 2)))
+			delay = delay + jitter
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
