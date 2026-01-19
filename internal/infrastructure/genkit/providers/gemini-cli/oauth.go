@@ -1,7 +1,10 @@
 package geminicli
 
 import (
+	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +12,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -17,6 +23,10 @@ import (
 const (
 	ClientID     = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
 	ClientSecret = "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"
+	// OAuthTimeout is the maximum time to wait for OAuth authentication (5 minutes, matching gemini-cli)
+	OAuthTimeout = 5 * time.Minute
+	// NoBrowserRedirectURI is the official Google redirect URI for manual code copy-paste
+	NoBrowserRedirectURI = "https://codeassist.google.com/authcode"
 )
 
 var Scopes = []string{
@@ -31,21 +41,29 @@ func GetOAuthConfig() *oauth2.Config {
 		ClientSecret: ClientSecret,
 		Scopes:       Scopes,
 		Endpoint:     google.Endpoint,
-		RedirectURL:  "http://localhost:0/oauth2callback", // Will be updated with actual port
 	}
 }
 
-func GetTokenSource(ctx context.Context, credsPath string) (oauth2.TokenSource, error) {
+func GetTokenSource(ctx context.Context, credsPath string, noBrowser bool) (oauth2.TokenSource, error) {
 	config := GetOAuthConfig()
 
 	// 1. Try to load cached token
 	token, err := LoadToken(credsPath)
 	if err == nil {
-		return config.TokenSource(ctx, token), nil
+		return &PersistingTokenSource{
+			base:      config.TokenSource(ctx, token),
+			credsPath: credsPath,
+			lastToken: token,
+		}, nil
 	}
 
 	// 2. No token or invalid, run OAuth flow
-	token, err = RunOAuthFlow(ctx, config)
+	if noBrowser {
+		token, err = RunOAuthFlowNoBrowser(ctx, config)
+	} else {
+		token, err = RunOAuthFlow(ctx, config)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +73,41 @@ func GetTokenSource(ctx context.Context, credsPath string) (oauth2.TokenSource, 
 		fmt.Printf("Warning: failed to save token: %v\n", err)
 	}
 
-	return config.TokenSource(ctx, token), nil
+	return &PersistingTokenSource{
+		base:      config.TokenSource(ctx, token),
+		credsPath: credsPath,
+		lastToken: token,
+	}, nil
+}
+
+// PersistingTokenSource wraps an oauth2.TokenSource and saves tokens to disk on refresh.
+type PersistingTokenSource struct {
+	base      oauth2.TokenSource
+	credsPath string
+	lastToken *oauth2.Token
+	mu        sync.Mutex
+}
+
+func (pts *PersistingTokenSource) Token() (*oauth2.Token, error) {
+	pts.mu.Lock()
+	defer pts.mu.Unlock()
+
+	token, err := pts.base.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if token was refreshed
+	if pts.lastToken == nil || token.AccessToken != pts.lastToken.AccessToken {
+		// Only save if either AccessToken changed or Expiry is significantly different
+		// (though oauth2.Token.Expiry is usually enough, TS compares Credentials)
+		if err := SaveToken(pts.credsPath, token); err != nil {
+			fmt.Printf("Warning: failed to persist token: %v\n", err)
+		}
+		pts.lastToken = token
+	}
+
+	return token, nil
 }
 
 func LoadToken(path string) (*oauth2.Token, error) {
@@ -82,7 +134,17 @@ func SaveToken(path string, token *oauth2.Token) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func RunOAuthFlow(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+func generateState() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+func RunOAuthFlow(parentCtx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+	// Create context with timeout (5 minutes, matching gemini-cli)
+	ctx, cancel := context.WithTimeout(parentCtx, OAuthTimeout)
+	defer cancel()
+
 	// Find available port
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -93,10 +155,19 @@ func RunOAuthFlow(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 	port := listener.Addr().(*net.TCPAddr).Port
 	config.RedirectURL = fmt.Sprintf("http://localhost:%d/oauth2callback", port)
 
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	// PKCE and State
+	state := generateState()
+	verifier := oauth2.GenerateVerifier()
+
+	authURL := config.AuthCodeURL(
+		state,
+		oauth2.AccessTypeOffline,
+		oauth2.S256ChallengeOption(verifier),
+	)
 
 	fmt.Printf("\n--- Gemini CLI Authentication Required ---\n")
 	fmt.Printf("Please open this URL in your browser to authorize Gemini CLI:\n\n%s\n\n", authURL)
+	fmt.Printf("Waiting for authentication (timeout: %v)...\n", OAuthTimeout)
 
 	codeChan := make(chan string)
 	errChan := make(chan error)
@@ -107,6 +178,14 @@ func RunOAuthFlow(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 				http.NotFound(w, r)
 				return
 			}
+			// Verify state to prevent CSRF
+			if r.URL.Query().Get("state") != state {
+				errMsg := "invalid oauth state"
+				http.Error(w, errMsg, http.StatusForbidden)
+				errChan <- errors.New(errMsg)
+				return
+			}
+
 			code := r.URL.Query().Get("code")
 			if code == "" {
 				errMsg := "no code found in redirect URL"
@@ -127,7 +206,8 @@ func RunOAuthFlow(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 
 	select {
 	case code := <-codeChan:
-		token, err := config.Exchange(ctx, code)
+		// Exchange code using PKCE verifier
+		token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 		if err != nil {
 			return nil, fmt.Errorf("failed to exchange code for token: %v", err)
 		}
@@ -137,7 +217,70 @@ func RunOAuthFlow(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 		_ = server.Shutdown(ctx)
 		return nil, err
 	case <-ctx.Done():
-		_ = server.Shutdown(ctx)
+		_ = server.Shutdown(context.Background())
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("authentication timed out after %v - the browser tab may have gotten stuck", OAuthTimeout)
+		}
+		return nil, ctx.Err()
+	}
+}
+
+// RunOAuthFlowNoBrowser — авторизация через ручной ввод кода (для SSH/удаленных серверов)
+func RunOAuthFlowNoBrowser(parentCtx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+	ctx, cancel := context.WithTimeout(parentCtx, OAuthTimeout)
+	defer cancel()
+
+	// Find available port is NOT needed for manual flow, but config.RedirectURL MUST match one of the allowed redirect URIs.
+	// Gemini CLI uses "https://codeassist.google.com/authcode" for manual flow.
+	config.RedirectURL = NoBrowserRedirectURI
+
+	// PKCE and State
+	state := generateState()
+	verifier := oauth2.GenerateVerifier()
+
+	authURL := config.AuthCodeURL(
+		state,
+		oauth2.AccessTypeOffline,
+		oauth2.S256ChallengeOption(verifier),
+	)
+
+	fmt.Printf("\n--- Gemini CLI Authentication Required (NO_BROWSER mode) ---\n")
+	fmt.Printf("Please open this URL in any browser to authorize Gemini CLI:\n\n%s\n\n", authURL)
+	fmt.Printf("After authorization, copy the code provided on the page and paste it here.\n")
+	fmt.Printf("Waiting for code (timeout: %v)...\n", OAuthTimeout)
+	fmt.Printf("Enter authorization code: ")
+
+	// Read code from stdin
+	codeChan := make(chan string)
+	errChan := make(chan error)
+
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		code, err := reader.ReadString('\n')
+		if err != nil {
+			errChan <- err
+			return
+		}
+		codeChan <- strings.TrimSpace(code)
+	}()
+
+	select {
+	case code := <-codeChan:
+		if code == "" {
+			return nil, errors.New("authorization code is required")
+		}
+		// Exchange code using PKCE verifier
+		token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+		if err != nil {
+			return nil, fmt.Errorf("failed to exchange code for token: %v", err)
+		}
+		return token, nil
+	case err := <-errChan:
+		return nil, err
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("authentication timed out after %v", OAuthTimeout)
+		}
 		return nil, ctx.Err()
 	}
 }

@@ -1,5 +1,7 @@
 package geminicli
 
+import "google.golang.org/genai"
+
 // LoadCodeAssist types for project discovery
 type LoadCodeAssistRequest struct {
 	CloudaicompanionProject string         `json:"cloudaicompanionProject,omitempty"`
@@ -20,4 +22,36 @@ type LoadCodeAssistResponse struct {
 
 type UserTier struct {
 	ID string `json:"id"`
+}
+
+// RetrieveUserQuotaRequest — запрос квот пользователя
+type RetrieveUserQuotaRequest struct {
+	Project   string `json:"project"`
+	UserAgent string `json:"userAgent,omitempty"`
+}
+
+// BucketInfo — информация о квоте
+type BucketInfo struct {
+	RemainingAmount   string  `json:"remainingAmount,omitempty"`
+	RemainingFraction float64 `json:"remainingFraction,omitempty"`
+	ResetTime         string  `json:"resetTime,omitempty"`
+	TokenType         string  `json:"tokenType,omitempty"`
+	ModelID           string  `json:"modelId,omitempty"`
+}
+
+// RetrieveUserQuotaResponse — ответ с квотами
+type RetrieveUserQuotaResponse struct {
+	Buckets []BucketInfo `json:"buckets,omitempty"`
+}
+
+// CountTokensRequest — запрос для подсчёта токенов
+type CountTokensRequest struct {
+	Model    string           `json:"model"`
+	Project  string           `json:"project,omitempty"`
+	Contents []*genai.Content `json:"contents"`
+}
+
+// CountTokensResponse — ответ с количеством токенов
+type CountTokensResponse struct {
+	TotalTokens int32 `json:"totalTokens"`
 }

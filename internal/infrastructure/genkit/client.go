@@ -24,17 +24,31 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 
 	switch cfg.AIProvider {
 	case "gemini-cli":
-		gcli, err := geminicli.New(ctx, cfg.GeminiCLICredsPath)
+		plugin := &geminicli.CodeAssist{
+			CredsPath: cfg.GeminiCLICredsPath,
+		}
+
+		g = genkit.Init(ctx,
+			genkit.WithPlugins(plugin),
+			genkit.WithPromptDir("./app/gkit/prompts"),
+		)
+
+		var err error
+		models, err := plugin.DefineAllModels(g)
 		if err != nil {
 			return nil, err
 		}
 
-		g = genkit.Init(ctx,
-			genkit.WithPlugins(gcli),
-			genkit.WithPromptDir("./app/gkit/prompts"),
-		)
-
-		model = gcli.DefineModel(g, "") // Use default model
+		// Pick gemini-2.5-flash as default for now
+		for _, m := range models {
+			if m.Name() == "gemini-cli/gemini-2.5-flash" {
+				model = m
+				break
+			}
+		}
+		if model == nil && len(models) > 0 {
+			model = models[0]
+		}
 	default: // ollama
 		plugin := providers.OllamaPlugin(cfg)
 
