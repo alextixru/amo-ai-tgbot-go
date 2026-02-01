@@ -19,6 +19,7 @@ Transport (Genkit Tool) → Service (Business Logic) → amoCRM SDK
 ```
 
 Services знают о:
+
 - `models/` (Transport DTOs как входные данные)
 - `github.com/alextixru/amocrm-sdk-go/core/models` (SDK модели)
-- `github.com/alextixru/amocrm-sdk-go/core/adapters` (SDK сервисы)
+- `github.com/alextixru/amocrm-sdk-go/core/services` (SDK сервисы)
