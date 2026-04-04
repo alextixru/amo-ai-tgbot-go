@@ -6,23 +6,23 @@ import (
 
 	"github.com/go-telegram/bot/models"
 	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
+	infraCRM "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 )
 
 // Service handles Telegram business logic
 type Service struct {
-	agent *gkit.Agent
-	crm   *crm.Service
-	auth  *auth.Service
+	agent     *gkit.Agent
+	crmClient *infraCRM.Client
+	auth      *auth.Service
 }
 
 // NewService creates a new Telegram service
-func NewService(agent *gkit.Agent, crmService *crm.Service, authService *auth.Service) *Service {
+func NewService(agent *gkit.Agent, crmClient *infraCRM.Client, authService *auth.Service) *Service {
 	return &Service{
-		agent: agent,
-		crm:   crmService,
-		auth:  authService,
+		agent:     agent,
+		crmClient: crmClient,
+		auth:      authService,
 	}
 }
 
@@ -232,8 +232,7 @@ func (s *Service) HandleDisconnect(telegramUserID int64) string {
 
 // HandleHealthcheck checks CRM connectivity
 func (s *Service) HandleHealthcheck(ctx context.Context) string {
-	err := s.crm.Healthcheck(ctx)
-	if err != nil {
+	if err := s.crmClient.Healthcheck(ctx); err != nil {
 		return fmt.Sprintf("❌ amoCRM недоступен\n\nОшибка: %v", err)
 	}
 	return "✅ amoCRM доступен!"
@@ -241,20 +240,43 @@ func (s *Service) HandleHealthcheck(ctx context.Context) string {
 
 // HandleAccount returns account information
 func (s *Service) HandleAccount(ctx context.Context) string {
-	info, err := s.crm.GetAccountInfo(ctx)
+	account, err := s.crmClient.SDK().Account().GetCurrent(ctx, nil)
 	if err != nil {
 		return fmt.Sprintf("❌ Ошибка получения аккаунта\n\n%v", err)
 	}
-	return info
+	return fmt.Sprintf(
+		"🏢 Аккаунт: %s\n🆔 ID: %d\n🌐 Subdomain: %s",
+		account.Name, account.ID, account.Subdomain,
+	)
 }
 
 // HandlePipelines returns pipelines information
 func (s *Service) HandlePipelines(ctx context.Context) string {
-	info, err := s.crm.GetPipelines(ctx)
+	pipelines, _, err := s.crmClient.SDK().Pipelines().Get(ctx, nil)
 	if err != nil {
 		return fmt.Sprintf("❌ Ошибка получения воронок\n\n%v", err)
 	}
-	return info
+	if len(pipelines) == 0 {
+		return "📭 Воронок нет"
+	}
+	var result string
+	for _, p := range pipelines {
+		result += fmt.Sprintf("📊 %s (ID: %d)\n", p.Name, p.ID)
+		statuses, _, err := s.crmClient.SDK().Statuses(p.ID).Get(ctx, nil)
+		if err != nil {
+			result += fmt.Sprintf("   ⚠️ Ошибка загрузки статусов: %v\n", err)
+			continue
+		}
+		for i, st := range statuses {
+			prefix := "├─"
+			if i == len(statuses)-1 {
+				prefix = "└─"
+			}
+			result += fmt.Sprintf("   %s %s (ID: %d)\n", prefix, st.Name, st.ID)
+		}
+		result += "\n"
+	}
+	return result
 }
 
 // ProcessAI processes a message through the AI agent

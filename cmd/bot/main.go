@@ -16,7 +16,6 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
-	appCRM "github.com/tihn/amo-ai-tgbot-go/internal/services/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
 
@@ -69,14 +68,11 @@ func main() {
 
 	// === Application ===
 
-	// CRM service (business logic)
-	crmService := appCRM.NewService(crmClient)
-
 	// AI agent (needs SDK for tools)
 	agent := gkit.NewAgent(genkitClient, crmClient.SDK())
 
 	// Telegram service (business logic)
-	telegramSvc := telegram.NewService(agent, crmService, authService)
+	telegramSvc := telegram.NewService(agent, crmClient, authService)
 
 	// Telegram handler
 	handler := tgHandler.NewHandler(telegramSvc, cfg.Debug)
