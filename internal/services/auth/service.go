@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit/providers/gemini-cli/oauth"
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/google/oauth"
 	"golang.org/x/oauth2"
 )
 

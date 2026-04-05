@@ -4,7 +4,7 @@ package session
 import (
 	"sync"
 
-	"github.com/firebase/genkit/go/ai"
+	"github.com/tihn/amo-ai-tgbot-go/internal/models/chat"
 )
 
 // MaxHistoryMessages limits the number of messages stored per session.
@@ -14,10 +14,10 @@ const MaxHistoryMessages = 20
 // Store defines the interface for chat history persistence.
 type Store interface {
 	// Load retrieves chat history for a session.
-	Load(sessionID string) []*ai.Message
+	Load(sessionID string) []*chat.Message
 
 	// Save stores chat history for a session.
-	Save(sessionID string, history []*ai.Message)
+	Save(sessionID string, history []*chat.Message)
 
 	// Clear removes chat history for a session.
 	Clear(sessionID string)
@@ -28,18 +28,18 @@ type Store interface {
 // For persistence, migrate to Redis or database implementation.
 type MemoryStore struct {
 	mu    sync.RWMutex
-	store map[string][]*ai.Message
+	store map[string][]*chat.Message
 }
 
 // NewMemoryStore creates a new in-memory session store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		store: make(map[string][]*ai.Message),
+		store: make(map[string][]*chat.Message),
 	}
 }
 
 // Load retrieves chat history for a session.
-func (m *MemoryStore) Load(sessionID string) []*ai.Message {
+func (m *MemoryStore) Load(sessionID string) []*chat.Message {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -49,14 +49,14 @@ func (m *MemoryStore) Load(sessionID string) []*ai.Message {
 	}
 
 	// Return a copy to avoid race conditions
-	result := make([]*ai.Message, len(history))
+	result := make([]*chat.Message, len(history))
 	copy(result, history)
 	return result
 }
 
 // Save stores chat history for a session.
 // Trims history to MaxHistoryMessages if exceeded.
-func (m *MemoryStore) Save(sessionID string, history []*ai.Message) {
+func (m *MemoryStore) Save(sessionID string, history []*chat.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -66,7 +66,7 @@ func (m *MemoryStore) Save(sessionID string, history []*ai.Message) {
 	}
 
 	// Store a copy
-	stored := make([]*ai.Message, len(history))
+	stored := make([]*chat.Message, len(history))
 	copy(stored, history)
 	m.store[sessionID] = stored
 }

@@ -5,20 +5,20 @@ import (
 	"fmt"
 
 	"github.com/go-telegram/bot/models"
-	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
 	infraCRM "github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/agent"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
 )
 
 // Service handles Telegram business logic
 type Service struct {
-	agent     *gkit.Agent
+	agent     agent.Processor
 	crmClient *infraCRM.Client
 	auth      *auth.Service
 }
 
 // NewService creates a new Telegram service
-func NewService(agent *gkit.Agent, crmClient *infraCRM.Client, authService *auth.Service) *Service {
+func NewService(agent agent.Processor, crmClient *infraCRM.Client, authService *auth.Service) *Service {
 	return &Service{
 		agent:     agent,
 		crmClient: crmClient,

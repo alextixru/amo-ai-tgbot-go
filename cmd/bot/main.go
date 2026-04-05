@@ -10,11 +10,10 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/gkit"
+	"github.com/tihn/amo-ai-tgbot-go/app/agent"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
-	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/genkit"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
@@ -40,12 +39,6 @@ func main() {
 
 	// === Infrastructure ===
 
-	// Genkit client
-	genkitClient, err := genkit.New(ctx, cfg)
-	if err != nil {
-		log.Fatalf("Failed to init Genkit client: %v", err)
-	}
-
 	// CRM client
 	crmClient, err := crm.New(cfg)
 	if err != nil {
@@ -69,13 +62,13 @@ func main() {
 	// === Application ===
 
 	// AI agent (needs SDK for tools)
-	agent, err := gkit.NewAgent(ctx, genkitClient, crmClient.SDK())
+	aiAgent, err := agent.NewAgent(ctx, crmClient.SDK())
 	if err != nil {
 		log.Fatalf("Failed to init AI agent: %v", err)
 	}
 
 	// Telegram service (business logic)
-	telegramSvc := telegram.NewService(agent, crmClient, authService)
+	telegramSvc := telegram.NewService(aiAgent, crmClient, authService)
 
 	// Telegram handler
 	handler := tgHandler.NewHandler(telegramSvc, cfg.Debug)
@@ -95,10 +88,6 @@ func main() {
 	// Register callback handler for inline buttons
 	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, "", bot.MatchTypePrefix, handler.HandleCallback)
 
-	if cfg.AIProvider == "gemini-cli" {
-		log.Print("Bot started with Gemini CLI provider")
-	} else {
-		log.Printf("Bot started with Ollama model: %s", cfg.OllamaModel)
-	}
+	log.Print("Bot started (AI agent: stub, pending ADK migration)")
 	b.Start(ctx)
 }
