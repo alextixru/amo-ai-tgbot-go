@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -43,6 +44,11 @@ func (t *AdminIntegrationsTool) Description() string {
 // IsLongRunning implements tool.Tool.
 func (t *AdminIntegrationsTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *AdminIntegrationsTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration implements toolinternal.FunctionTool (duck typing).

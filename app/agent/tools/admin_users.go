@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -41,6 +42,11 @@ func (t *AdminUsersTool) Description() string {
 // IsLongRunning implements tool.Tool.
 func (t *AdminUsersTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *AdminUsersTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration implements toolinternal.FunctionTool (duck typing).

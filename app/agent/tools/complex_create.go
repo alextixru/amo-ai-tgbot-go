@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -37,6 +38,11 @@ func (t *ComplexCreateTool) Description() string {
 // IsLongRunning возвращает false — инструмент не является длительной операцией.
 func (t *ComplexCreateTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *ComplexCreateTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration возвращает FunctionDeclaration для регистрации в genai.

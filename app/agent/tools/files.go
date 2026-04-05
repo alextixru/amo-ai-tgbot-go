@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/services"
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -41,6 +42,11 @@ func (t *FilesTool) Description() string {
 // IsLongRunning указывает, является ли инструмент долгосрочной операцией.
 func (t *FilesTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *FilesTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration возвращает декларацию функции для ADK/LLM.

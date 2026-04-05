@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -36,6 +37,11 @@ func (t *EntitiesTool) Description() string {
 // IsLongRunning реализует tool.Tool.
 func (t *EntitiesTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *EntitiesTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration реализует toolinternal.FunctionTool (duck typing).

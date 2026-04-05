@@ -1,8 +1,12 @@
 package tools
 
 import (
+	"fmt"
+
 	"google.golang.org/adk/agent"
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
 
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/activities"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_integrations"
@@ -64,4 +68,46 @@ func (ts *CRMToolset) Name() string {
 // Tools implements tool.Toolset.
 func (ts *CRMToolset) Tools(_ agent.ReadonlyContext) ([]tool.Tool, error) {
 	return ts.tools, nil
+}
+
+// declaringTool is a tool that provides a FunctionDeclaration (duck typing match for toolinternal.FunctionTool).
+type declaringTool interface {
+	tool.Tool
+	Declaration() *genai.FunctionDeclaration
+}
+
+// packToolDeclaration adds a tool's FunctionDeclaration into the LLM request.
+// Mirrors google.golang.org/adk/internal/toolinternal/toolutils.PackTool logic.
+func packToolDeclaration(req *model.LLMRequest, t declaringTool) error {
+	if req.Tools == nil {
+		req.Tools = make(map[string]any)
+	}
+	name := t.Name()
+	if _, ok := req.Tools[name]; ok {
+		return fmt.Errorf("duplicate tool: %q", name)
+	}
+	req.Tools[name] = t
+
+	if req.Config == nil {
+		req.Config = &genai.GenerateContentConfig{}
+	}
+	decl := t.Declaration()
+	if decl == nil {
+		return nil
+	}
+	var funcTool *genai.Tool
+	for _, gt := range req.Config.Tools {
+		if gt != nil && gt.FunctionDeclarations != nil {
+			funcTool = gt
+			break
+		}
+	}
+	if funcTool == nil {
+		req.Config.Tools = append(req.Config.Tools, &genai.Tool{
+			FunctionDeclarations: []*genai.FunctionDeclaration{decl},
+		})
+	} else {
+		funcTool.FunctionDeclarations = append(funcTool.FunctionDeclarations, decl)
+	}
+	return nil
 }

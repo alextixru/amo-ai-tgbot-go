@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -272,6 +273,11 @@ func (t *CatalogsTool) Description() string {
 
 // IsLongRunning всегда false для синхронных CRM операций.
 func (t *CatalogsTool) IsLongRunning() bool { return false }
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *CatalogsTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
+}
 
 // Declaration возвращает genai.FunctionDeclaration для регистрации в ADK.
 func (t *CatalogsTool) Declaration() *genai.FunctionDeclaration {

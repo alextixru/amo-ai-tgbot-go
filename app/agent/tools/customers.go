@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
@@ -38,6 +39,11 @@ func (t *CustomersTool) Description() string {
 // IsLongRunning implements tool.Tool.
 func (t *CustomersTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest реализует toolinternal.RequestProcessor — регистрирует Declaration в LLM request.
+func (t *CustomersTool) ProcessRequest(_ tool.Context, req *model.LLMRequest) error {
+	return packToolDeclaration(req, t)
 }
 
 // Declaration implements toolinternal.FunctionTool (duck typing).
