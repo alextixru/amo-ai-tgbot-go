@@ -1,6 +1,6 @@
 .PHONY: run dev build clean
 
-# Разработка: hot reload + Genkit Dev UI (http://localhost:4000)
+# Разработка: hot reload
 # Просто запусти `air` в терминале
 dev:
 	air

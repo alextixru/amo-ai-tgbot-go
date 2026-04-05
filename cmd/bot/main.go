@@ -14,6 +14,7 @@ import (
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
+	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/llm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
@@ -61,8 +62,11 @@ func main() {
 
 	// === Application ===
 
-	// AI agent (needs SDK for tools)
-	aiAgent, err := agent.NewAgent(ctx, crmClient.SDK())
+	// LLM provider (Ollama via OpenAI-compatible API)
+	llmModel := llm.NewProvider(cfg)
+
+	// AI agent (ADK Runner, no tools yet)
+	aiAgent, err := agent.NewAgent(ctx, llmModel)
 	if err != nil {
 		log.Fatalf("Failed to init AI agent: %v", err)
 	}
@@ -88,6 +92,6 @@ func main() {
 	// Register callback handler for inline buttons
 	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, "", bot.MatchTypePrefix, handler.HandleCallback)
 
-	log.Print("Bot started (AI agent: stub, pending ADK migration)")
+	log.Print("Bot started (AI agent: ADK Runner)")
 	b.Start(ctx)
 }

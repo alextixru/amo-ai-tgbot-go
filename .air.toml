@@ -4,7 +4,7 @@ dotenv = ".env"
 
 [build]
   cmd = "go build -o ./.temp/bot ./cmd/bot"
-  full_bin = "genkit start -- ./.temp/bot"
+  full_bin = "./.temp/bot"
   delay = 1000
   exclude_dir = [".temp", "vendor", ".git"]
   exclude_regex = ["_test.go"]

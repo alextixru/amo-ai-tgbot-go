@@ -3,104 +3,74 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
-	amocrm "github.com/alextixru/amocrm-sdk-go"
+	"google.golang.org/adk/agent"
+	"google.golang.org/adk/agent/llmagent"
+	"google.golang.org/adk/model"
+	"google.golang.org/adk/runner"
+	"google.golang.org/adk/session"
+	"google.golang.org/genai"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/agent/tools"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/activities"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_integrations"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_pipelines"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_schema"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_users"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/catalogs"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/complex_create"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/customers"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/entities"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/files"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/products"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/unsorted"
-	"github.com/tihn/amo-ai-tgbot-go/internal/services/session"
+	"github.com/tihn/amo-ai-tgbot-go/app/agent/prompts"
 )
 
-// Agent handles AI processing. Currently a stub — will be replaced by ADK Runner.
+const appName = "amocrm-bot"
+
+// Agent handles AI processing via ADK Runner.
 type Agent struct {
-	registry *tools.Registry
-	store    session.Store
+	runner         *runner.Runner
+	sessionService session.Service
 }
 
-// NewAgent creates a new AI agent with registered tools.
-// CRM services are initialized and tools are registered, ready for ADK Runner.
-func NewAgent(ctx context.Context, sdk *amocrm.SDK) (*Agent, error) {
-	// Создаём session store для истории диалогов
-	store := session.NewMemoryStore()
+// NewAgent creates a new AI agent backed by ADK Runner.
+// Tools are not connected yet — the agent only conducts dialog via LLM.
+func NewAgent(ctx context.Context, llmModel model.LLM) (*Agent, error) {
+	adkAgent, err := llmagent.New(llmagent.Config{
+		Name:        "crm-assistant",
+		Model:       llmModel,
+		Description: "amoCRM AI assistant",
+		Instruction: prompts.BuildSystemPrompt(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: create llm agent: %w", err)
+	}
 
-	// Инициализируем сервисы
-	entitiesSvc, err := entities.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	activitiesSvc, err := activities.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	complexCreateSvc, err := complex_create.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	productsSvc := products.NewService(sdk)
-	catalogsSvc, err := catalogs.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	filesSvc := files.NewService(sdk)
-	unsortedSvc, err := unsorted.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	customersSvc, err := customers.New(ctx, sdk)
-	if err != nil {
-		return nil, fmt.Errorf("NewAgent: %w", err)
-	}
-	adminSchemaSvc := admin_schema.NewService(sdk)
-	adminPipelinesSvc := admin_pipelines.New(sdk)
-	adminUsersSvc := admin_users.NewService(sdk)
-	adminIntegrationsSvc := admin_integrations.NewService(sdk)
+	sessionService := session.InMemoryService()
 
-	// Регистрируем все tools через framework-agnostic registry
-	registry := tools.NewRegistry(
-		entitiesSvc,
-		activitiesSvc,
-		complexCreateSvc,
-		productsSvc,
-		catalogsSvc,
-		filesSvc,
-		unsortedSvc,
-		customersSvc,
-		adminSchemaSvc,
-		adminPipelinesSvc,
-		adminUsersSvc,
-		adminIntegrationsSvc,
-	)
-	registry.RegisterAll()
+	runnr, err := runner.New(runner.Config{
+		AppName:           appName,
+		Agent:             adkAgent,
+		SessionService:    sessionService,
+		AutoCreateSession: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: create runner: %w", err)
+	}
 
 	return &Agent{
-		registry: registry,
-		store:    store,
+		runner:         runnr,
+		sessionService: sessionService,
 	}, nil
 }
 
-// Process processes a user message.
-// TODO: Replace stub with ADK Runner integration.
+// Process processes a user message through the ADK Runner.
 func (a *Agent) Process(ctx context.Context, sessionID, message string) (string, error) {
-	return "🔧 AI-агент в процессе миграции на ADK. Скоро вернусь!", nil
-}
+	userMsg := genai.NewContentFromText(message, genai.RoleUser)
 
-// Tools returns the registered tool definitions (for ADK adapter).
-func (a *Agent) Tools() []tools.ToolDefinition {
-	return a.registry.AllTools()
-}
+	var result strings.Builder
+	for event, err := range a.runner.Run(ctx, sessionID, sessionID, userMsg, agent.RunConfig{}) {
+		if err != nil {
+			return "", fmt.Errorf("agent run: %w", err)
+		}
+		if event.Content != nil {
+			for _, part := range event.Content.Parts {
+				if part.Text != "" {
+					result.WriteString(part.Text)
+				}
+			}
+		}
+	}
 
-// Store returns the session store (for ADK adapter).
-func (a *Agent) Store() session.Store {
-	return a.store
+	return result.String(), nil
 }
