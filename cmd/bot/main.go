@@ -10,7 +10,11 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/joho/godotenv"
 
-	"github.com/tihn/amo-ai-tgbot-go/app/agent"
+	"google.golang.org/adk/agent"
+	"google.golang.org/adk/cmd/launcher"
+	"google.golang.org/adk/cmd/launcher/full"
+
+	appagent "github.com/tihn/amo-ai-tgbot-go/app/agent"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
@@ -66,18 +70,33 @@ func main() {
 	llmModel := llm.NewProvider(cfg)
 
 	// AI agent (ADK Runner, no tools yet)
-	aiAgent, err := agent.NewAgent(ctx, llmModel)
+	aiAgent, err := appagent.NewAgent(ctx, llmModel)
 	if err != nil {
 		log.Fatalf("Failed to init AI agent: %v", err)
 	}
+
+	// === ADK Web UI (debug) ===
+
+	adkLauncher := full.NewLauncher()
+	launcherConfig := &launcher.Config{
+		SessionService: aiAgent.SessionService(),
+		AgentLoader:    agent.NewSingleLoader(aiAgent.ADKAgent()),
+	}
+
+	go func() {
+		// "web api webui" — запускает HTTP сервер с REST API и Web UI на :8080
+		if err := adkLauncher.Execute(ctx, launcherConfig, []string{"web", "api", "webui"}); err != nil {
+			log.Printf("ADK Web UI error: %v", err)
+		}
+	}()
+
+	// === Telegram Bot ===
 
 	// Telegram service (business logic)
 	telegramSvc := telegram.NewService(aiAgent, crmClient, authService)
 
 	// Telegram handler
 	handler := tgHandler.NewHandler(telegramSvc, cfg.Debug)
-
-	// === Start Bot ===
 
 	opts := []bot.Option{
 		bot.WithDefaultHandler(handler.HandleMessage),
@@ -92,6 +111,6 @@ func main() {
 	// Register callback handler for inline buttons
 	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, "", bot.MatchTypePrefix, handler.HandleCallback)
 
-	log.Print("Bot started (AI agent: ADK Runner)")
+	log.Print("Bot started (AI agent: ADK Runner, Web UI: http://localhost:8080)")
 	b.Start(ctx)
 }

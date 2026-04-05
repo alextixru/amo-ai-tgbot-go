@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/agent"
+	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
@@ -15,12 +15,13 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/app/agent/prompts"
 )
 
-const appName = "amocrm-bot"
+const AppName = "amocrm-bot"
 
 // Agent handles AI processing via ADK Runner.
 type Agent struct {
 	runner         *runner.Runner
 	sessionService session.Service
+	adkAgent       adkagent.Agent
 }
 
 // NewAgent creates a new AI agent backed by ADK Runner.
@@ -39,7 +40,7 @@ func NewAgent(ctx context.Context, llmModel model.LLM) (*Agent, error) {
 	sessionService := session.InMemoryService()
 
 	runnr, err := runner.New(runner.Config{
-		AppName:           appName,
+		AppName:           AppName,
 		Agent:             adkAgent,
 		SessionService:    sessionService,
 		AutoCreateSession: true,
@@ -51,6 +52,7 @@ func NewAgent(ctx context.Context, llmModel model.LLM) (*Agent, error) {
 	return &Agent{
 		runner:         runnr,
 		sessionService: sessionService,
+		adkAgent:       adkAgent,
 	}, nil
 }
 
@@ -59,7 +61,7 @@ func (a *Agent) Process(ctx context.Context, sessionID, message string) (string,
 	userMsg := genai.NewContentFromText(message, genai.RoleUser)
 
 	var result strings.Builder
-	for event, err := range a.runner.Run(ctx, sessionID, sessionID, userMsg, agent.RunConfig{}) {
+	for event, err := range a.runner.Run(ctx, sessionID, sessionID, userMsg, adkagent.RunConfig{}) {
 		if err != nil {
 			return "", fmt.Errorf("agent run: %w", err)
 		}
@@ -73,4 +75,14 @@ func (a *Agent) Process(ctx context.Context, sessionID, message string) (string,
 	}
 
 	return result.String(), nil
+}
+
+// ADKAgent returns the underlying ADK agent (for web launcher).
+func (a *Agent) ADKAgent() adkagent.Agent {
+	return a.adkAgent
+}
+
+// SessionService returns the session service (for web launcher).
+func (a *Agent) SessionService() session.Service {
+	return a.sessionService
 }
