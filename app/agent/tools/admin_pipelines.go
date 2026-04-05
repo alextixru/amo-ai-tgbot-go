@@ -1,12 +1,227 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
+	admin_pipelines "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_pipelines"
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
+
+// AdminPipelinesTool реализует нативный ADK FunctionTool интерфейс для управления воронками amoCRM.
+// Shadow Tool паттерн: минимальная схема видна LLM, полная схема возвращается при первом вызове.
+type AdminPipelinesTool struct {
+	service admin_pipelines.Service
+}
+
+// NewAdminPipelinesTool создаёт новый AdminPipelinesTool с указанным сервисом.
+func NewAdminPipelinesTool(service admin_pipelines.Service) *AdminPipelinesTool {
+	return &AdminPipelinesTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *AdminPipelinesTool) Name() string {
+	return "admin_pipelines"
+}
+
+// Description implements tool.Tool.
+func (t *AdminPipelinesTool) Description() string {
+	return "Управление воронками и статусами amoCRM. " +
+		"Actions: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status. " +
+		"Вызови с action чтобы получить схему параметров."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *AdminPipelinesTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration implements toolinternal.FunctionTool (duck typing).
+func (t *AdminPipelinesTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие над воронкой или статусом: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status",
+					Enum:        []string{"search", "get", "create", "update", "delete", "get_statuses", "get_status", "create_status", "update_status", "delete_status"},
+				},
+			},
+			Required: []string{"action"},
+		},
+	}
+}
+
+// Run implements toolinternal.FunctionTool (duck typing).
+func (t *AdminPipelinesTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	raw, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("admin_pipelines: invalid input type %T", args)
+	}
+
+	// Извлекаем action
+	actionVal, ok := raw["action"]
+	if !ok || actionVal == nil {
+		return nil, fmt.Errorf("поле action обязательно. Доступные: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status")
+	}
+	action, ok := actionVal.(string)
+	if !ok || action == "" {
+		return nil, fmt.Errorf("action должен быть строкой")
+	}
+
+	// Schema-режим: обязательных полей нет → возвращаем схему
+	if adminPipelinesIsSchemaMode(action, raw) {
+		schema, err := adminPipelinesSchema(action)
+		if err != nil {
+			return nil, err
+		}
+		return toResultMap(schema)
+	}
+
+	// Execute-режим: json roundtrip map → AdminPipelinesInput
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка сериализации входных данных: %w", err)
+	}
+	var inp gkitmodels.AdminPipelinesInput
+	if err := json.Unmarshal(data, &inp); err != nil {
+		return nil, fmt.Errorf("ошибка разбора входных данных: %w", err)
+	}
+
+	var result any
+
+	switch inp.Action {
+
+	// --- Pipelines ---
+
+	case "list", "search":
+		res, err := t.service.ListPipelines(ctx, inp.WithStatuses)
+		b, _ := json.Marshal(res)
+		fmt.Printf("[admin_pipelines] search result: %s\n", string(b))
+		result, err = res, err
+		if err != nil {
+			return nil, err
+		}
+
+	case "get":
+		res, err := t.service.GetPipeline(ctx, inp.PipelineID, inp.PipelineName, inp.WithStatuses)
+		if err != nil {
+			return nil, err
+		}
+		result = res
+
+	case "create":
+		if len(inp.Items) > 0 {
+			// Батч-режим: items — массив PipelineData
+			itemsData, err := json.Marshal(inp.Items)
+			if err != nil {
+				return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
+			}
+			var pipelines []gkitmodels.PipelineData
+			if err := json.Unmarshal(itemsData, &pipelines); err != nil {
+				return nil, fmt.Errorf("не удалось разобрать items как []PipelineData: %w", err)
+			}
+			res, err := t.service.CreatePipelines(ctx, pipelines)
+			if err != nil {
+				return nil, err
+			}
+			result = res
+		} else if inp.Pipeline != nil {
+			res, err := t.service.CreatePipelines(ctx, []gkitmodels.PipelineData{*inp.Pipeline})
+			if err != nil {
+				return nil, err
+			}
+			result = res
+		} else {
+			return nil, fmt.Errorf("для create укажите pipeline или items")
+		}
+
+	case "update":
+		if inp.Pipeline == nil {
+			return nil, fmt.Errorf("для update укажите pipeline с данными для обновления")
+		}
+		res, err := t.service.UpdatePipeline(ctx, inp.PipelineID, inp.PipelineName, *inp.Pipeline)
+		if err != nil {
+			return nil, err
+		}
+		result = res
+
+	case "delete":
+		if err := t.service.DeletePipeline(ctx, inp.PipelineID, inp.PipelineName); err != nil {
+			return nil, err
+		}
+		result = map[string]any{"deleted": true}
+
+	// --- Statuses ---
+
+	case "list_statuses", "get_statuses":
+		res, err := t.service.ListStatuses(ctx, inp.PipelineID, inp.PipelineName)
+		if err != nil {
+			return nil, err
+		}
+		result = res
+
+	case "get_status":
+		res, err := t.service.GetStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName)
+		if err != nil {
+			return nil, err
+		}
+		result = res
+
+	case "create_status":
+		if len(inp.Items) > 0 {
+			// Батч-режим: items — массив StatusData
+			itemsData, err := json.Marshal(inp.Items)
+			if err != nil {
+				return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
+			}
+			var statuses []gkitmodels.StatusData
+			if err := json.Unmarshal(itemsData, &statuses); err != nil {
+				return nil, fmt.Errorf("не удалось разобрать items как []StatusData: %w", err)
+			}
+			res, err := t.service.CreateStatuses(ctx, inp.PipelineID, inp.PipelineName, statuses)
+			if err != nil {
+				return nil, err
+			}
+			result = res
+		} else if inp.Status != nil {
+			res, err := t.service.CreateStatus(ctx, inp.PipelineID, inp.PipelineName, *inp.Status)
+			if err != nil {
+				return nil, err
+			}
+			result = res
+		} else {
+			return nil, fmt.Errorf("для create_status укажите status или items")
+		}
+
+	case "update_status":
+		if inp.Status == nil {
+			return nil, fmt.Errorf("для update_status укажите status с данными для обновления")
+		}
+		res, err := t.service.UpdateStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName, *inp.Status)
+		if err != nil {
+			return nil, err
+		}
+		result = res
+
+	case "delete_status":
+		if err := t.service.DeleteStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName); err != nil {
+			return nil, err
+		}
+		result = map[string]any{"deleted": true}
+
+	default:
+		return nil, fmt.Errorf("неизвестное действие: %s", inp.Action)
+	}
+
+	return toResultMap(result)
+}
 
 // adminPipelinesSchema возвращает полную схему параметров для заданного action.
 // Используется в Schema-режиме Shadow Tool.
@@ -285,123 +500,4 @@ func adminPipelinesIsSchemaMode(action string, raw map[string]any) bool {
 	default:
 		return false
 	}
-}
-
-func (r *Registry) RegisterAdminPipelinesTool() {
-	r.addTool(ToolDefinition{
-		Name: "admin_pipelines",
-		Description: "Управление воронками и статусами amoCRM. " +
-			"Actions: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status. " +
-			"Вызови с action чтобы получить схему параметров.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			raw, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("admin_pipelines: invalid input type %T", input)
-			}
-
-			// Извлекаем action
-			actionVal, ok := raw["action"]
-			if !ok || actionVal == nil {
-				return nil, fmt.Errorf("поле action обязательно. Доступные: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status")
-			}
-			action, ok := actionVal.(string)
-			if !ok || action == "" {
-				return nil, fmt.Errorf("action должен быть строкой")
-			}
-
-			// Schema-режим: обязательных полей нет → возвращаем схему
-			if adminPipelinesIsSchemaMode(action, raw) {
-				return adminPipelinesSchema(action)
-			}
-
-			// Execute-режим: json roundtrip map → AdminPipelinesInput
-			data, err := json.Marshal(raw)
-			if err != nil {
-				return nil, fmt.Errorf("ошибка сериализации входных данных: %w", err)
-			}
-			var inp gkitmodels.AdminPipelinesInput
-			if err := json.Unmarshal(data, &inp); err != nil {
-				return nil, fmt.Errorf("ошибка разбора входных данных: %w", err)
-			}
-
-			switch inp.Action {
-
-			// --- Pipelines ---
-
-			case "list", "search":
-				result, err := r.adminPipelinesService.ListPipelines(ctx, inp.WithStatuses)
-				b, _ := json.Marshal(result)
-				fmt.Printf("[admin_pipelines] search result: %s\n", string(b))
-				return result, err
-
-			case "get":
-				return r.adminPipelinesService.GetPipeline(ctx, inp.PipelineID, inp.PipelineName, inp.WithStatuses)
-
-			case "create":
-				if len(inp.Items) > 0 {
-					// Батч-режим: items — массив PipelineData
-					itemsData, err := json.Marshal(inp.Items)
-					if err != nil {
-						return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
-					}
-					var pipelines []gkitmodels.PipelineData
-					if err := json.Unmarshal(itemsData, &pipelines); err != nil {
-						return nil, fmt.Errorf("не удалось разобрать items как []PipelineData: %w", err)
-					}
-					return r.adminPipelinesService.CreatePipelines(ctx, pipelines)
-				}
-				if inp.Pipeline != nil {
-					return r.adminPipelinesService.CreatePipelines(ctx, []gkitmodels.PipelineData{*inp.Pipeline})
-				}
-				return nil, fmt.Errorf("для create укажите pipeline или items")
-
-			case "update":
-				if inp.Pipeline == nil {
-					return nil, fmt.Errorf("для update укажите pipeline с данными для обновления")
-				}
-				return r.adminPipelinesService.UpdatePipeline(ctx, inp.PipelineID, inp.PipelineName, *inp.Pipeline)
-
-			case "delete":
-				return nil, r.adminPipelinesService.DeletePipeline(ctx, inp.PipelineID, inp.PipelineName)
-
-			// --- Statuses ---
-
-			case "list_statuses", "get_statuses":
-				return r.adminPipelinesService.ListStatuses(ctx, inp.PipelineID, inp.PipelineName)
-
-			case "get_status":
-				return r.adminPipelinesService.GetStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName)
-
-			case "create_status":
-				if len(inp.Items) > 0 {
-					// Батч-режим: items — массив StatusData
-					itemsData, err := json.Marshal(inp.Items)
-					if err != nil {
-						return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
-					}
-					var statuses []gkitmodels.StatusData
-					if err := json.Unmarshal(itemsData, &statuses); err != nil {
-						return nil, fmt.Errorf("не удалось разобрать items как []StatusData: %w", err)
-					}
-					return r.adminPipelinesService.CreateStatuses(ctx, inp.PipelineID, inp.PipelineName, statuses)
-				}
-				if inp.Status != nil {
-					return r.adminPipelinesService.CreateStatus(ctx, inp.PipelineID, inp.PipelineName, *inp.Status)
-				}
-				return nil, fmt.Errorf("для create_status укажите status или items")
-
-			case "update_status":
-				if inp.Status == nil {
-					return nil, fmt.Errorf("для update_status укажите status с данными для обновления")
-				}
-				return r.adminPipelinesService.UpdateStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName, *inp.Status)
-
-			case "delete_status":
-				return nil, r.adminPipelinesService.DeleteStatus(ctx, inp.PipelineID, inp.PipelineName, inp.StatusID, inp.StatusName)
-
-			default:
-				return nil, fmt.Errorf("неизвестное действие: %s", inp.Action)
-			}
-		},
-	})
 }

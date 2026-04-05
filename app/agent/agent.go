@@ -10,6 +10,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
+	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
 	"github.com/tihn/amo-ai-tgbot-go/app/agent/prompts"
@@ -24,14 +25,14 @@ type Agent struct {
 	adkAgent       adkagent.Agent
 }
 
-// NewAgent creates a new AI agent backed by ADK Runner.
-// Tools are not connected yet — the agent only conducts dialog via LLM.
-func NewAgent(ctx context.Context, llmModel model.LLM) (*Agent, error) {
+// NewAgent creates a new AI agent backed by ADK Runner with CRM tools.
+func NewAgent(ctx context.Context, llmModel model.LLM, toolsets ...tool.Toolset) (*Agent, error) {
 	adkAgent, err := llmagent.New(llmagent.Config{
 		Name:        "crm-assistant",
 		Model:       llmModel,
 		Description: "amoCRM AI assistant",
 		Instruction: prompts.BuildSystemPrompt(),
+		Toolsets:    toolsets,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("NewAgent: create llm agent: %w", err)

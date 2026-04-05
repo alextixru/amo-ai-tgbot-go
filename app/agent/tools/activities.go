@@ -1,12 +1,79 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/activities"
 	models "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
+
+// ActivitiesTool реализует нативный ADK FunctionTool интерфейс для работы с активностями amoCRM.
+// Shadow Tool паттерн: минимальная схема видна LLM, полная схема возвращается при первом вызове.
+type ActivitiesTool struct {
+	service activities.Service
+}
+
+// NewActivitiesTool создаёт новый ActivitiesTool с указанным сервисом.
+func NewActivitiesTool(service activities.Service) *ActivitiesTool {
+	return &ActivitiesTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *ActivitiesTool) Name() string {
+	return "activities"
+}
+
+// Description implements tool.Tool.
+func (t *ActivitiesTool) Description() string {
+	return "Активности привязанные к сущностям amoCRM. " +
+		"Layers: tasks, notes, calls, events, links, tags, subscriptions, talks. " +
+		"Вызови с layer + action чтобы получить схему параметров."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *ActivitiesTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration implements toolinternal.FunctionTool (duck typing).
+func (t *ActivitiesTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"layer": {
+					Type:        genai.TypeString,
+					Description: "Слой активностей: tasks, notes, calls, events, files, links, tags, subscriptions, talks",
+					Enum:        []string{"tasks", "notes", "calls", "events", "files", "links", "tags", "subscriptions", "talks"},
+				},
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, create, update, complete, link, unlink, delete, subscribe, unsubscribe, close",
+				},
+			},
+			Required: []string{"layer", "action"},
+		},
+	}
+}
+
+// Run implements toolinternal.FunctionTool (duck typing).
+func (t *ActivitiesTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	m, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("activities: неверный формат input")
+	}
+	result, err := t.handleActivitiesShadow(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // activitiesSchemas содержит полные схемы параметров для каждой комбинации layer+action.
 // Возвращается LLM при первом вызове без обязательных полей (Shadow Tool — schema mode).
@@ -828,7 +895,7 @@ func isActivitiesSchemaMode(layer, action string, m map[string]any) bool {
 
 // activitiesSchemaResponse строит schema response для данного layer+action.
 // Добавляет available_values из сервиса.
-func (r *Registry) activitiesSchemaResponse(layer, action string) map[string]any {
+func (t *ActivitiesTool) activitiesSchemaResponse(layer, action string) map[string]any {
 	key := activitiesSchemaKey(layer, action)
 	schema, ok := activitiesSchemas[key]
 	if !ok {
@@ -859,7 +926,7 @@ func (r *Registry) activitiesSchemaResponse(layer, action string) map[string]any
 	switch layer {
 	case "tasks", "subscriptions":
 		result["available_values"] = map[string]any{
-			"users":        r.activitiesService.UserNames(),
+			"users":        t.service.UserNames(),
 			"entity_types": []string{"leads", "contacts", "companies"},
 		}
 	case "notes", "calls", "files", "links":
@@ -882,28 +949,8 @@ func (r *Registry) activitiesSchemaResponse(layer, action string) map[string]any
 	return result
 }
 
-// RegisterActivitiesTool регистрирует инструмент для работы с активностями (Shadow Tool паттерн).
-// LLM видит минимальную схему — только layer + action.
-// При первом вызове (без обязательных полей) возвращает полную схему + available_values.
-// При повторном вызове (с обязательными полями) — выполняет действие.
-func (r *Registry) RegisterActivitiesTool() {
-	r.addTool(ToolDefinition{
-		Name: "activities",
-		Description: "Активности привязанные к сущностям amoCRM. " +
-			"Layers: tasks, notes, calls, events, links, tags, subscriptions, talks. " +
-			"Вызови с layer + action чтобы получить схему параметров.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			rawInput, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("activities: expected map[string]any input, got %T", input)
-			}
-			return r.handleActivitiesShadow(ctx, rawInput)
-		},
-	})
-}
-
 // handleActivitiesShadow реализует Shadow Tool логику для activities.
-func (r *Registry) handleActivitiesShadow(ctx context.Context, m map[string]any) (any, error) {
+func (t *ActivitiesTool) handleActivitiesShadow(ctx tool.Context, m map[string]any) (any, error) {
 	layer, _ := m["layer"].(string)
 	action, _ := m["action"].(string)
 
@@ -930,7 +977,7 @@ func (r *Registry) handleActivitiesShadow(ctx context.Context, m map[string]any)
 
 	// Определяем режим: schema или execute
 	if isActivitiesSchemaMode(layer, action, m) {
-		return r.activitiesSchemaResponse(layer, action), nil
+		return t.activitiesSchemaResponse(layer, action), nil
 	}
 
 	// Execute mode: JSON roundtrip map → ActivitiesInput → существующий handler
@@ -944,10 +991,10 @@ func (r *Registry) handleActivitiesShadow(ctx context.Context, m map[string]any)
 		return nil, fmt.Errorf("activities: unmarshal input: %w", err)
 	}
 
-	return r.handleActivities(ctx, input)
+	return t.handleActivities(ctx, input)
 }
 
-func (r *Registry) handleActivities(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleActivities(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	// Валидация parent: теперь опционально для некоторых действий или при наличии фильтра
 	// Для большинства действий (кроме list) parent всё еще обязателен
 	if input.Action != "list" && (input.Parent == nil || input.Parent.Type == "" || input.Parent.ID == 0) {
@@ -960,50 +1007,50 @@ func (r *Registry) handleActivities(ctx context.Context, input models.Activities
 
 	switch input.Layer {
 	case "tasks":
-		return r.handleTasks(ctx, input)
+		return t.handleTasks(ctx, input)
 	case "notes":
-		return r.handleNotes(ctx, input)
+		return t.handleNotes(ctx, input)
 	case "calls":
-		return r.handleCalls(ctx, input)
+		return t.handleCalls(ctx, input)
 	case "events":
-		return r.handleEvents(ctx, input)
+		return t.handleEvents(ctx, input)
 	case "files":
-		return r.handleFiles(ctx, input)
+		return t.handleFiles(ctx, input)
 	case "links":
-		return r.handleLinks(ctx, input)
+		return t.handleLinks(ctx, input)
 	case "tags":
-		return r.handleTags(ctx, input)
+		return t.handleTags(ctx, input)
 	case "subscriptions":
-		return r.handleSubscriptions(ctx, input)
+		return t.handleSubscriptions(ctx, input)
 	case "talks":
-		return r.handleTalks(ctx, input)
+		return t.handleTalks(ctx, input)
 	default:
 		return nil, fmt.Errorf("unknown layer: %s", input.Layer)
 	}
 }
 
-func (r *Registry) handleTasks(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleTasks(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListTasks(ctx, input.Parent, input.Filter, input.With)
+		return t.service.ListTasks(ctx, input.Parent, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		return r.activitiesService.GetTask(ctx, input.ID, input.With)
+		return t.service.GetTask(ctx, input.ID, input.With)
 	case "create":
 		if input.Parent == nil {
 			return nil, fmt.Errorf("parent is required for create")
 		}
 		// Batch create
 		if len(input.TasksData) > 0 {
-			return r.activitiesService.CreateTasks(ctx, *input.Parent, input.TasksData)
+			return t.service.CreateTasks(ctx, *input.Parent, input.TasksData)
 		}
 		// Single create
 		if input.TaskData == nil {
 			return nil, fmt.Errorf("task_data or tasks_data is required")
 		}
-		return r.activitiesService.CreateTask(ctx, *input.Parent, input.TaskData)
+		return t.service.CreateTask(ctx, *input.Parent, input.TaskData)
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
@@ -1011,39 +1058,39 @@ func (r *Registry) handleTasks(ctx context.Context, input models.ActivitiesInput
 		if input.TaskData == nil {
 			return nil, fmt.Errorf("task_data is required")
 		}
-		return r.activitiesService.UpdateTask(ctx, input.ID, input.TaskData)
+		return t.service.UpdateTask(ctx, input.ID, input.TaskData)
 	case "complete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		return r.activitiesService.CompleteTask(ctx, input.ID, input.ResultText)
+		return t.service.CompleteTask(ctx, input.ID, input.ResultText)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleNotes(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleNotes(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	if input.Parent == nil {
 		return nil, fmt.Errorf("parent is required for notes")
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListNotes(ctx, *input.Parent, input.NotesFilter, input.With)
+		return t.service.ListNotes(ctx, *input.Parent, input.NotesFilter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		return r.activitiesService.GetNote(ctx, input.Parent.Type, input.ID)
+		return t.service.GetNote(ctx, input.Parent.Type, input.ID)
 	case "create":
 		// Batch create
 		if len(input.NotesData) > 0 {
-			return r.activitiesService.CreateNotes(ctx, *input.Parent, input.NotesData)
+			return t.service.CreateNotes(ctx, *input.Parent, input.NotesData)
 		}
 		// Single create
 		if input.NoteData == nil {
 			return nil, fmt.Errorf("note_data or notes_data is required")
 		}
-		return r.activitiesService.CreateNote(ctx, *input.Parent, input.NoteData)
+		return t.service.CreateNote(ctx, *input.Parent, input.NoteData)
 	case "update":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
@@ -1051,13 +1098,13 @@ func (r *Registry) handleNotes(ctx context.Context, input models.ActivitiesInput
 		if input.NoteData == nil {
 			return nil, fmt.Errorf("note_data is required")
 		}
-		return r.activitiesService.UpdateNote(ctx, input.Parent.Type, input.ID, input.NoteData)
+		return t.service.UpdateNote(ctx, input.Parent.Type, input.ID, input.NoteData)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleCalls(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleCalls(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	if input.Action != "create" {
 		return nil, fmt.Errorf("calls only supports 'create' action")
 	}
@@ -1067,73 +1114,73 @@ func (r *Registry) handleCalls(ctx context.Context, input models.ActivitiesInput
 	if input.CallData == nil {
 		return nil, fmt.Errorf("call_data is required")
 	}
-	return r.activitiesService.CreateCall(ctx, *input.Parent, input.CallData)
+	return t.service.CreateCall(ctx, *input.Parent, input.CallData)
 }
 
-func (r *Registry) handleEvents(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleEvents(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListEvents(ctx, input.Parent, input.EventsFilter)
+		return t.service.ListEvents(ctx, input.Parent, input.EventsFilter)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required")
 		}
-		return r.activitiesService.GetEvent(ctx, input.ID)
+		return t.service.GetEvent(ctx, input.ID)
 	default:
 		return nil, fmt.Errorf("events only supports 'list' and 'get' actions")
 	}
 }
 
-func (r *Registry) handleFiles(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleFiles(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	if input.Parent == nil {
 		return nil, fmt.Errorf("parent is required for files")
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListFiles(ctx, *input.Parent, input.FilesFilter)
+		return t.service.ListFiles(ctx, *input.Parent, input.FilesFilter)
 	case "link":
 		if len(input.FileUUIDs) == 0 {
 			return nil, fmt.Errorf("file_uuids is required")
 		}
-		return r.activitiesService.LinkFiles(ctx, *input.Parent, input.FileUUIDs)
+		return t.service.LinkFiles(ctx, *input.Parent, input.FileUUIDs)
 	case "unlink":
 		if input.FileUUID == "" {
 			return nil, fmt.Errorf("file_uuid is required")
 		}
-		return nil, r.activitiesService.UnlinkFile(ctx, *input.Parent, input.FileUUID)
+		return nil, t.service.UnlinkFile(ctx, *input.Parent, input.FileUUID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleLinks(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleLinks(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	if input.Parent == nil {
 		return nil, fmt.Errorf("parent is required for links")
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListLinks(ctx, *input.Parent, input.LinksFilter)
+		return t.service.ListLinks(ctx, *input.Parent, input.LinksFilter)
 	case "link":
 		// Batch link
 		if len(input.LinksTo) > 0 {
-			return r.activitiesService.LinkEntities(ctx, *input.Parent, input.LinksTo)
+			return t.service.LinkEntities(ctx, *input.Parent, input.LinksTo)
 		}
 		// Single link
 		if input.LinkTo == nil {
 			return nil, fmt.Errorf("link_to or links_to is required")
 		}
-		return r.activitiesService.LinkEntity(ctx, *input.Parent, input.LinkTo)
+		return t.service.LinkEntity(ctx, *input.Parent, input.LinkTo)
 	case "unlink":
 		if input.LinkTo == nil {
 			return nil, fmt.Errorf("link_to is required")
 		}
-		return nil, r.activitiesService.UnlinkEntity(ctx, *input.Parent, input.LinkTo)
+		return nil, t.service.UnlinkEntity(ctx, *input.Parent, input.LinkTo)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleTags(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleTags(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	entityType := ""
 	if input.Parent != nil {
 		entityType = input.Parent.Type
@@ -1144,64 +1191,64 @@ func (r *Registry) handleTags(ctx context.Context, input models.ActivitiesInput)
 
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListTags(ctx, entityType, input.TagsFilter)
+		return t.service.ListTags(ctx, entityType, input.TagsFilter)
 	case "create":
 		// Batch create
 		if len(input.TagNames) > 0 {
-			return r.activitiesService.CreateTags(ctx, entityType, input.TagNames)
+			return t.service.CreateTags(ctx, entityType, input.TagNames)
 		}
 		// Single create
 		if input.TagName == "" {
 			return nil, fmt.Errorf("tag_name or tag_names is required")
 		}
-		return r.activitiesService.CreateTag(ctx, entityType, input.TagName)
+		return t.service.CreateTag(ctx, entityType, input.TagName)
 	case "delete":
 		if input.TagID == 0 && input.TagName != "" {
-			return nil, r.activitiesService.DeleteTagByName(ctx, entityType, input.TagName)
+			return nil, t.service.DeleteTagByName(ctx, entityType, input.TagName)
 		}
 		if input.TagID == 0 {
 			return nil, fmt.Errorf("tag_id or tag_name is required for delete")
 		}
-		return nil, r.activitiesService.DeleteTag(ctx, entityType, input.TagID)
+		return nil, t.service.DeleteTag(ctx, entityType, input.TagID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleSubscriptions(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleSubscriptions(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	if input.Parent == nil {
 		return nil, fmt.Errorf("parent is required for subscriptions")
 	}
 	switch input.Action {
 	case "list":
-		return r.activitiesService.ListSubscriptions(ctx, *input.Parent)
+		return t.service.ListSubscriptions(ctx, *input.Parent)
 	case "subscribe":
 		if len(input.UserNames) == 0 {
 			return nil, fmt.Errorf("user_names is required")
 		}
-		return r.activitiesService.Subscribe(ctx, *input.Parent, input.UserNames)
+		return t.service.Subscribe(ctx, *input.Parent, input.UserNames)
 	case "unsubscribe":
 		if input.UserName == "" {
 			return nil, fmt.Errorf("user_name is required")
 		}
-		return nil, r.activitiesService.Unsubscribe(ctx, *input.Parent, input.UserName)
+		return nil, t.service.Unsubscribe(ctx, *input.Parent, input.UserName)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
 }
 
-func (r *Registry) handleTalks(ctx context.Context, input models.ActivitiesInput) (any, error) {
+func (t *ActivitiesTool) handleTalks(ctx tool.Context, input models.ActivitiesInput) (any, error) {
 	switch input.Action {
 	case "get":
 		if input.TalkID == "" {
 			return nil, fmt.Errorf("talk_id is required")
 		}
-		return r.activitiesService.GetTalk(ctx, input.TalkID)
+		return t.service.GetTalk(ctx, input.TalkID)
 	case "close":
 		if input.TalkID == "" {
 			return nil, fmt.Errorf("talk_id is required")
 		}
-		return nil, r.activitiesService.CloseTalk(ctx, input.TalkID, input.ForceClose)
+		return nil, t.service.CloseTalk(ctx, input.TalkID, input.ForceClose)
 	default:
 		return nil, fmt.Errorf("unknown action: %s (talks supports 'get' and 'close')", input.Action)
 	}

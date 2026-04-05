@@ -1,7 +1,8 @@
 package tools
 
 import (
-	"context"
+	"google.golang.org/adk/agent"
+	"google.golang.org/adk/tool"
 
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/activities"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_integrations"
@@ -17,85 +18,50 @@ import (
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/unsorted"
 )
 
-// ToolDefinition describes a single tool in a framework-agnostic way.
-// ADK adapter will convert these into ADK tool format.
-type ToolDefinition struct {
-	Name        string
-	Description string
-	InputSchema map[string]any                                    // JSON Schema for the tool input
-	Handler     func(ctx context.Context, input any) (any, error) // Business logic handler
+// CRMToolset implements tool.Toolset — returns all CRM tools for ADK agent.
+type CRMToolset struct {
+	tools []tool.Tool
 }
 
-// Registry holds CRM services and produces framework-agnostic tool definitions.
-type Registry struct {
-	entitiesService          entities.Service
-	activitiesService        activities.Service
-	complexCreateService     complex_create.Service
-	productsService          products.Service
-	catalogsService          catalogs.Service
-	filesService             files.Service
-	unsortedService          unsorted.Service
-	customersService         customers.Service
-	adminSchemaService       admin_schema.Service
-	adminPipelinesService    admin_pipelines.Service
-	adminUsersService        admin_users.Service
-	adminIntegrationsService admin_integrations.Service
-
-	tools []ToolDefinition
-}
-
-func NewRegistry(
-	entitiesService entities.Service,
-	activitiesService activities.Service,
-	complexCreateService complex_create.Service,
-	productsService products.Service,
-	catalogsService catalogs.Service,
-	filesService files.Service,
-	unsortedService unsorted.Service,
-	customersService customers.Service,
-	adminSchemaService admin_schema.Service,
-	adminPipelinesService admin_pipelines.Service,
-	adminUsersService admin_users.Service,
-	adminIntegrationsService admin_integrations.Service,
-) *Registry {
-	return &Registry{
-		entitiesService:          entitiesService,
-		activitiesService:        activitiesService,
-		complexCreateService:     complexCreateService,
-		productsService:          productsService,
-		catalogsService:          catalogsService,
-		filesService:             filesService,
-		unsortedService:          unsortedService,
-		customersService:         customersService,
-		adminSchemaService:       adminSchemaService,
-		adminPipelinesService:    adminPipelinesService,
-		adminUsersService:        adminUsersService,
-		adminIntegrationsService: adminIntegrationsService,
-		tools:                    make([]ToolDefinition, 0),
+// NewCRMToolset creates a toolset with all 12 CRM tools.
+func NewCRMToolset(
+	entitiesSvc entities.Service,
+	activitiesSvc activities.Service,
+	complexCreateSvc complex_create.Service,
+	productsSvc products.Service,
+	catalogsSvc catalogs.Service,
+	filesSvc files.Service,
+	unsortedSvc unsorted.Service,
+	customersSvc customers.Service,
+	adminSchemaSvc admin_schema.Service,
+	adminPipelinesSvc admin_pipelines.Service,
+	adminUsersSvc admin_users.Service,
+	adminIntegrationsSvc admin_integrations.Service,
+) *CRMToolset {
+	return &CRMToolset{
+		tools: []tool.Tool{
+			NewEntitiesTool(entitiesSvc),
+			NewActivitiesTool(activitiesSvc),
+			NewComplexCreateTool(complexCreateSvc),
+			NewProductsTool(productsSvc),
+			NewCatalogsTool(catalogsSvc),
+			NewFilesTool(filesSvc),
+			NewUnsortedTool(unsortedSvc),
+			NewCustomersTool(customersSvc),
+			NewAdminSchemaTool(adminSchemaSvc),
+			NewAdminPipelinesTool(adminPipelinesSvc),
+			NewAdminUsersTool(adminUsersSvc),
+			NewAdminIntegrationsTool(adminIntegrationsSvc),
+		},
 	}
 }
 
-func (r *Registry) RegisterAll() {
-	r.RegisterEntitiesTool()
-	r.RegisterActivitiesTool()
-	r.RegisterComplexCreateTool()
-	r.RegisterProductsTool()
-	r.RegisterCatalogsTool()
-	r.RegisterFilesTool()
-	r.RegisterUnsortedTool()
-	r.RegisterCustomersTool()
-	r.RegisterAdminSchemaTool()
-	r.RegisterAdminPipelinesTool()
-	r.RegisterAdminUsersTool()
-	r.RegisterAdminIntegrationsTool()
+// Name implements tool.Toolset.
+func (ts *CRMToolset) Name() string {
+	return "crm_tools"
 }
 
-// AllTools returns all registered tool definitions.
-func (r *Registry) AllTools() []ToolDefinition {
-	return r.tools
-}
-
-// addTool adds a tool definition to the registry.
-func (r *Registry) addTool(def ToolDefinition) {
-	r.tools = append(r.tools, def)
+// Tools implements tool.Toolset.
+func (ts *CRMToolset) Tools(_ agent.ReadonlyContext) ([]tool.Tool, error) {
+	return ts.tools, nil
 }

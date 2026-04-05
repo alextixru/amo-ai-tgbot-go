@@ -1,12 +1,121 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/customers"
+	models "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
+
+// CustomersTool реализует нативный ADK FunctionTool интерфейс для работы с покупателями amoCRM.
+// Shadow Tool паттерн: минимальная схема видна LLM, полная схема возвращается при первом вызове.
+type CustomersTool struct {
+	service customers.Service
+}
+
+// NewCustomersTool создаёт новый CustomersTool с указанным сервисом.
+func NewCustomersTool(service customers.Service) *CustomersTool {
+	return &CustomersTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *CustomersTool) Name() string {
+	return "customers"
+}
+
+// Description implements tool.Tool.
+func (t *CustomersTool) Description() string {
+	return "Управление покупателями (Retention) в amoCRM: покупатели, бонусные баллы, статусы, транзакции, сегменты. " +
+		"Layers: customers (CRUD + link), bonus_points (get/earn_points/redeem_points), " +
+		"statuses (CRUD), transactions (list/create/delete), segments (CRUD). " +
+		"Вызови с layer+action чтобы получить полную схему параметров и доступные значения."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *CustomersTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration implements toolinternal.FunctionTool (duck typing).
+func (t *CustomersTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"layer": {
+					Type:        genai.TypeString,
+					Description: "Слой: customers, bonus_points, statuses, transactions, segments",
+					Enum:        []string{"customers", "bonus_points", "statuses", "transactions", "segments"},
+				},
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, create, update, delete, link, earn_points, redeem_points",
+				},
+			},
+			Required: []string{"layer", "action"},
+		},
+	}
+}
+
+// Run implements toolinternal.FunctionTool (duck typing).
+func (t *CustomersTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	rawInput, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("customers: invalid input type %T", args)
+	}
+
+	layer, _ := rawInput["layer"].(string)
+	action, _ := rawInput["action"].(string)
+
+	availableValues := map[string]any{
+		"users":             t.service.UserNames(),
+		"customer_statuses": t.service.StatusNames(),
+	}
+
+	if layer == "" || action == "" {
+		result := map[string]any{
+			"schema": true,
+			"tool":   "customers",
+			"error":  "layer и action обязательны",
+			"available_layers": map[string]any{
+				"customers":    []string{"list", "get", "create", "update", "delete", "link"},
+				"bonus_points": []string{"get", "earn_points", "redeem_points"},
+				"statuses":     []string{"list", "get", "create", "update", "delete"},
+				"transactions": []string{"list", "create", "delete"},
+				"segments":     []string{"list", "get", "create", "delete"},
+			},
+			"hint":             "Укажи layer + action чтобы получить схему параметров",
+			"available_values": availableValues,
+		}
+		return result, nil
+	}
+
+	if customersIsSchemaMode(layer, action, rawInput) {
+		return customersSchemaResponse(layer, action, availableValues), nil
+	}
+
+	// Execute mode: десериализуем map в CustomersInput через JSON roundtrip
+	rawBytes, err := json.Marshal(rawInput)
+	if err != nil {
+		return nil, fmt.Errorf("customers: marshal input: %w", err)
+	}
+	var fullInput models.CustomersInput
+	if err := json.Unmarshal(rawBytes, &fullInput); err != nil {
+		return nil, fmt.Errorf("customers: parse input: %w", err)
+	}
+
+	result, err := t.executeCustomers(ctx, &fullInput)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // customersRequiredFields определяет обязательные поля для каждой комбинации layer+action.
 // Пустой список — действие не требует доп. полей (выполняем сразу, schema mode не нужен).
@@ -436,110 +545,48 @@ func customersSchemaResponse(layer, action string, availableValues map[string]an
 	return resp
 }
 
-// RegisterCustomersTool регистрирует customers tool по Shadow Tool паттерну.
-//
-// LLM видит минимальное описание (layer + action).
-// Вызов только с layer+action → handler возвращает полную схему полей + available_values.
-// Вызов с обязательными полями → выполняет действие через CRM-сервис.
-func (r *Registry) RegisterCustomersTool() {
-	r.addTool(ToolDefinition{
-		Name: "customers",
-		Description: "Управление покупателями (Retention) в amoCRM: покупатели, бонусные баллы, статусы, транзакции, сегменты. " +
-			"Layers: customers (CRUD + link), bonus_points (get/earn_points/redeem_points), " +
-			"statuses (CRUD), transactions (list/create/delete), segments (CRUD). " +
-			"Вызови с layer+action чтобы получить полную схему параметров и доступные значения.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			rawInput, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("customers: invalid input type %T", input)
-			}
-
-			layer, _ := rawInput["layer"].(string)
-			action, _ := rawInput["action"].(string)
-
-			availableValues := map[string]any{
-				"users":             r.customersService.UserNames(),
-				"customer_statuses": r.customersService.StatusNames(),
-			}
-
-			if layer == "" || action == "" {
-				return map[string]any{
-					"schema": true,
-					"tool":   "customers",
-					"error":  "layer и action обязательны",
-					"available_layers": map[string]any{
-						"customers":    []string{"list", "get", "create", "update", "delete", "link"},
-						"bonus_points": []string{"get", "earn_points", "redeem_points"},
-						"statuses":     []string{"list", "get", "create", "update", "delete"},
-						"transactions": []string{"list", "create", "delete"},
-						"segments":     []string{"list", "get", "create", "delete"},
-					},
-					"hint":             "Укажи layer + action чтобы получить схему параметров",
-					"available_values": availableValues,
-				}, nil
-			}
-
-			if customersIsSchemaMode(layer, action, rawInput) {
-				return customersSchemaResponse(layer, action, availableValues), nil
-			}
-
-			// Execute mode: десериализуем map в CustomersInput через JSON roundtrip
-			rawBytes, err := json.Marshal(rawInput)
-			if err != nil {
-				return nil, fmt.Errorf("customers: marshal input: %w", err)
-			}
-			var fullInput gkitmodels.CustomersInput
-			if err := json.Unmarshal(rawBytes, &fullInput); err != nil {
-				return nil, fmt.Errorf("customers: parse input: %w", err)
-			}
-
-			return r.executeCustomers(ctx, &fullInput)
-		},
-	})
-}
-
 // executeCustomers выполняет действие customers tool.
 // Вызывается только в Execute mode (все обязательные поля присутствуют).
-func (r *Registry) executeCustomers(ctx context.Context, input *gkitmodels.CustomersInput) (any, error) {
+func (t *CustomersTool) executeCustomers(ctx tool.Context, input *models.CustomersInput) (any, error) {
 	switch input.Layer {
 	case "customers":
 		switch input.Action {
 		case "list":
-			return r.customersService.ListCustomers(ctx, input.Filter, input.With)
+			return t.service.ListCustomers(ctx, input.Filter, input.With)
 		case "get":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return r.customersService.GetCustomer(ctx, input.ID, input.With)
+			return t.service.GetCustomer(ctx, input.ID, input.With)
 		case "create":
 			if len(input.Batch) > 0 {
-				return r.customersService.CreateCustomers(ctx, input.Batch)
+				return t.service.CreateCustomers(ctx, input.Batch)
 			}
 			if input.Data == nil {
 				return nil, fmt.Errorf("data or batch is required")
 			}
-			return r.customersService.CreateCustomers(ctx, []*gkitmodels.CustomerData{input.Data})
+			return t.service.CreateCustomers(ctx, []*models.CustomerData{input.Data})
 		case "update":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
 			if len(input.Batch) > 0 {
-				return r.customersService.UpdateCustomers(ctx, input.ID, input.Batch)
+				return t.service.UpdateCustomers(ctx, input.ID, input.Batch)
 			}
 			if input.Data == nil {
 				return nil, fmt.Errorf("data or batch is required")
 			}
-			return r.customersService.UpdateCustomers(ctx, input.ID, []*gkitmodels.CustomerData{input.Data})
+			return t.service.UpdateCustomers(ctx, input.ID, []*models.CustomerData{input.Data})
 		case "delete":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return nil, r.customersService.DeleteCustomer(ctx, input.ID)
+			return nil, t.service.DeleteCustomer(ctx, input.ID)
 		case "link":
 			if input.CustomerID == 0 || input.LinkData == nil {
 				return nil, fmt.Errorf("customer_id and link_data are required")
 			}
-			return nil, r.customersService.LinkCustomer(ctx, input.CustomerID, input.LinkData.EntityType, input.LinkData.EntityID)
+			return nil, t.service.LinkCustomer(ctx, input.CustomerID, input.LinkData.EntityType, input.LinkData.EntityID)
 		default:
 			return nil, fmt.Errorf("unknown action for customers: %s", input.Action)
 		}
@@ -550,11 +597,11 @@ func (r *Registry) executeCustomers(ctx context.Context, input *gkitmodels.Custo
 		}
 		switch input.Action {
 		case "get":
-			return r.customersService.GetBonusPoints(ctx, input.CustomerID)
+			return t.service.GetBonusPoints(ctx, input.CustomerID)
 		case "earn_points":
-			return r.customersService.EarnBonusPoints(ctx, input.CustomerID, input.Points)
+			return t.service.EarnBonusPoints(ctx, input.CustomerID, input.Points)
 		case "redeem_points":
-			return r.customersService.RedeemBonusPoints(ctx, input.CustomerID, input.Points)
+			return t.service.RedeemBonusPoints(ctx, input.CustomerID, input.Points)
 		default:
 			return nil, fmt.Errorf("unknown action for bonus_points: %s", input.Action)
 		}
@@ -566,27 +613,27 @@ func (r *Registry) executeCustomers(ctx context.Context, input *gkitmodels.Custo
 			if input.Filter != nil {
 				page, limit = input.Filter.Page, input.Filter.Limit
 			}
-			return r.customersService.ListCustomerStatuses(ctx, page, limit)
+			return t.service.ListCustomerStatuses(ctx, page, limit)
 		case "get":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return r.customersService.GetCustomerStatus(ctx, input.ID)
+			return t.service.GetCustomerStatus(ctx, input.ID)
 		case "create":
 			if input.Data == nil || input.Data.Name == "" {
 				return nil, fmt.Errorf("data.name is required")
 			}
-			return r.customersService.CreateCustomerStatuses(ctx, []string{input.Data.Name})
+			return t.service.CreateCustomerStatuses(ctx, []string{input.Data.Name})
 		case "update":
 			if input.ID == 0 || input.Data == nil {
 				return nil, fmt.Errorf("id and data are required")
 			}
-			return r.customersService.UpdateCustomerStatus(ctx, input.ID, input.Data.Name)
+			return t.service.UpdateCustomerStatus(ctx, input.ID, input.Data.Name)
 		case "delete":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return nil, r.customersService.DeleteCustomerStatus(ctx, input.ID)
+			return nil, t.service.DeleteCustomerStatus(ctx, input.ID)
 		default:
 			return nil, fmt.Errorf("unknown action for statuses: %s", input.Action)
 		}
@@ -601,17 +648,17 @@ func (r *Registry) executeCustomers(ctx context.Context, input *gkitmodels.Custo
 			if input.Filter != nil {
 				page, limit = input.Filter.Page, input.Filter.Limit
 			}
-			return r.customersService.ListTransactions(ctx, input.CustomerID, page, limit)
+			return t.service.ListTransactions(ctx, input.CustomerID, page, limit)
 		case "create":
 			if input.TransactionData == nil {
 				return nil, fmt.Errorf("transaction_data is required")
 			}
-			return r.customersService.CreateTransactions(ctx, input.CustomerID, input.TransactionData.Price, input.TransactionData.Comment, input.TransactionData.AccrueBonus)
+			return t.service.CreateTransactions(ctx, input.CustomerID, input.TransactionData.Price, input.TransactionData.Comment, input.TransactionData.AccrueBonus)
 		case "delete":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return nil, r.customersService.DeleteTransaction(ctx, input.CustomerID, input.ID)
+			return nil, t.service.DeleteTransaction(ctx, input.CustomerID, input.ID)
 		default:
 			return nil, fmt.Errorf("unknown action for transactions: %s", input.Action)
 		}
@@ -623,22 +670,22 @@ func (r *Registry) executeCustomers(ctx context.Context, input *gkitmodels.Custo
 			if input.Filter != nil {
 				page, limit = input.Filter.Page, input.Filter.Limit
 			}
-			return r.customersService.ListSegments(ctx, page, limit)
+			return t.service.ListSegments(ctx, page, limit)
 		case "get":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return r.customersService.GetSegment(ctx, input.ID)
+			return t.service.GetSegment(ctx, input.ID)
 		case "create":
 			if input.Data == nil || input.Data.Name == "" {
 				return nil, fmt.Errorf("data.name is required")
 			}
-			return r.customersService.CreateSegments(ctx, []string{input.Data.Name})
+			return t.service.CreateSegments(ctx, []string{input.Data.Name})
 		case "delete":
 			if input.ID == 0 {
 				return nil, fmt.Errorf("id is required")
 			}
-			return nil, r.customersService.DeleteSegment(ctx, input.ID)
+			return nil, t.service.DeleteSegment(ctx, input.ID)
 		default:
 			return nil, fmt.Errorf("unknown action for segments: %s", input.Action)
 		}

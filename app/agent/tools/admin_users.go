@@ -1,13 +1,152 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_users"
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
+
+// AdminUsersTool реализует нативный ADK FunctionTool интерфейс для управления
+// пользователями и ролями amoCRM.
+// Shadow Tool паттерн: минимальная схема видна LLM, полная схема возвращается при первом вызове.
+type AdminUsersTool struct {
+	service admin_users.Service
+}
+
+// NewAdminUsersTool создаёт новый AdminUsersTool с указанным сервисом.
+func NewAdminUsersTool(service admin_users.Service) *AdminUsersTool {
+	return &AdminUsersTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *AdminUsersTool) Name() string {
+	return "admin_users"
+}
+
+// Description implements tool.Tool.
+func (t *AdminUsersTool) Description() string {
+	return "Управление пользователями и ролями amoCRM. " +
+		"Layers: users (пользователи), roles (роли). " +
+		"Actions для users: list, search, get, create. " +
+		"Actions для roles: list, search, get, create, update, delete. " +
+		"Вызови с layer + action чтобы получить схему параметров."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *AdminUsersTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration implements toolinternal.FunctionTool (duck typing).
+func (t *AdminUsersTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"layer": {
+					Type:        genai.TypeString,
+					Description: "Слой: users (пользователи) или roles (роли)",
+					Enum:        []string{"users", "roles"},
+				},
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, search, get, create, update, delete",
+				},
+			},
+			Required: []string{"layer", "action"},
+		},
+	}
+}
+
+// Run implements toolinternal.FunctionTool (duck typing).
+func (t *AdminUsersTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	raw, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("admin_users: invalid input type %T", args)
+	}
+
+	layer, _ := raw["layer"].(string)
+	action, _ := raw["action"].(string)
+
+	if layer == "" {
+		result := map[string]any{
+			"schema":      true,
+			"tool":        "admin_users",
+			"error":       "layer is required",
+			"layers":      []string{"users", "roles"},
+			"description": "Укажите layer (users или roles) и action чтобы получить схему параметров.",
+		}
+		return result, nil
+	}
+	if action == "" {
+		result := map[string]any{
+			"schema":      true,
+			"tool":        "admin_users",
+			"layer":       layer,
+			"error":       "action is required",
+			"description": "Укажите action чтобы получить схему параметров.",
+		}
+		return result, nil
+	}
+
+	key := layer + "." + action
+
+	// Проверяем наличие обязательных полей для данного layer.action
+	required, known := adminUsersRequiredFields[key]
+	if !known {
+		return nil, fmt.Errorf("неизвестная комбинация layer=%q action=%q. Вызови без обязательных полей чтобы получить схему.", layer, action)
+	}
+
+	// Определяем режим: schema или execute
+	isSchemaMode := false
+	for _, field := range required {
+		if _, ok := raw[field]; !ok {
+			isSchemaMode = true
+			break
+		}
+	}
+
+	if isSchemaMode {
+		if schema, ok := adminUsersSchema[key]; ok {
+			return schema, nil
+		}
+		return map[string]any{
+			"schema": true,
+			"tool":   "admin_users",
+			"layer":  layer,
+			"action": action,
+			"error":  "schema not found for this combination",
+		}, nil
+	}
+
+	// Execute mode: json-roundtrip map → AdminUsersInput
+	parsedInput, err := adminUsersMapToInput(raw)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка разбора параметров: %w", err)
+	}
+
+	var result any
+	switch layer {
+	case "users":
+		result, err = t.handleUsers(ctx, parsedInput)
+	case "roles":
+		result, err = t.handleRoles(ctx, parsedInput)
+	default:
+		return nil, fmt.Errorf("unknown layer: %s", layer)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // adminUsersSchema содержит полную схему параметров для каждого layer+action.
 // Возвращается LLM при первом вызове без обязательных полей (schema mode).
@@ -282,90 +421,6 @@ var adminUsersRequiredFields = map[string][]string{
 	"roles.delete": {"id"},
 }
 
-func (r *Registry) RegisterAdminUsersTool() {
-	r.addTool(ToolDefinition{
-		Name: "admin_users",
-		Description: "Управление пользователями и ролями amoCRM. " +
-			"Layers: users (пользователи), roles (роли). " +
-			"Actions для users: list, search, get, create. " +
-			"Actions для roles: list, search, get, create, update, delete. " +
-			"Вызови с layer + action чтобы получить схему параметров.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			raw, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("admin_users: invalid input type %T", input)
-			}
-
-			layer, _ := raw["layer"].(string)
-			action, _ := raw["action"].(string)
-
-			if layer == "" {
-				return map[string]any{
-					"schema":      true,
-					"tool":        "admin_users",
-					"error":       "layer is required",
-					"layers":      []string{"users", "roles"},
-					"description": "Укажите layer (users или roles) и action чтобы получить схему параметров.",
-				}, nil
-			}
-			if action == "" {
-				return map[string]any{
-					"schema":      true,
-					"tool":        "admin_users",
-					"layer":       layer,
-					"error":       "action is required",
-					"description": "Укажите action чтобы получить схему параметров.",
-				}, nil
-			}
-
-			key := layer + "." + action
-
-			// Проверяем наличие обязательных полей для данного layer.action
-			required, known := adminUsersRequiredFields[key]
-			if !known {
-				return nil, fmt.Errorf("неизвестная комбинация layer=%q action=%q. Вызови без обязательных полей чтобы получить схему.", layer, action)
-			}
-
-			// Определяем режим: schema или execute
-			isSchemaMode := false
-			for _, field := range required {
-				if _, ok := raw[field]; !ok {
-					isSchemaMode = true
-					break
-				}
-			}
-
-			if isSchemaMode {
-				if schema, ok := adminUsersSchema[key]; ok {
-					return schema, nil
-				}
-				return map[string]any{
-					"schema": true,
-					"tool":   "admin_users",
-					"layer":  layer,
-					"action": action,
-					"error":  "schema not found for this combination",
-				}, nil
-			}
-
-			// Execute mode: json-roundtrip map → AdminUsersInput
-			parsedInput, err := adminUsersMapToInput(raw)
-			if err != nil {
-				return nil, fmt.Errorf("ошибка разбора параметров: %w", err)
-			}
-
-			switch layer {
-			case "users":
-				return r.handleUsers(ctx, parsedInput)
-			case "roles":
-				return r.handleRoles(ctx, parsedInput)
-			default:
-				return nil, fmt.Errorf("unknown layer: %s", layer)
-			}
-		},
-	})
-}
-
 // adminUsersMapToInput конвертирует map[string]any → AdminUsersInput через json roundtrip.
 func adminUsersMapToInput(raw map[string]any) (gkitmodels.AdminUsersInput, error) {
 	data, err := json.Marshal(raw)
@@ -379,16 +434,16 @@ func adminUsersMapToInput(raw map[string]any) (gkitmodels.AdminUsersInput, error
 	return input, nil
 }
 
-func (r *Registry) handleUsers(ctx context.Context, input gkitmodels.AdminUsersInput) (any, error) {
+func (t *AdminUsersTool) handleUsers(ctx tool.Context, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.adminUsersService.ListUsers(ctx, input.Filter)
+		return t.service.ListUsers(ctx, input.Filter)
 
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get user")
 		}
-		return r.adminUsersService.GetUser(ctx, input.ID)
+		return t.service.GetUser(ctx, input.ID)
 
 	case "create":
 		if len(input.Users) == 0 {
@@ -403,7 +458,7 @@ func (r *Registry) handleUsers(ctx context.Context, input gkitmodels.AdminUsersI
 				Lang:     u.Lang,
 			})
 		}
-		return r.adminUsersService.CreateUsers(ctx, sdkUsers)
+		return t.service.CreateUsers(ctx, sdkUsers)
 
 	case "add_to_group":
 		return nil, fmt.Errorf("add_to_group: not implemented — amoCRM API does not support assigning users to groups via REST API v4")
@@ -416,16 +471,16 @@ func (r *Registry) handleUsers(ctx context.Context, input gkitmodels.AdminUsersI
 	}
 }
 
-func (r *Registry) handleRoles(ctx context.Context, input gkitmodels.AdminUsersInput) (any, error) {
+func (t *AdminUsersTool) handleRoles(ctx tool.Context, input gkitmodels.AdminUsersInput) (any, error) {
 	switch input.Action {
 	case "list", "search":
-		return r.adminUsersService.ListRoles(ctx, input.Filter)
+		return t.service.ListRoles(ctx, input.Filter)
 
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get role")
 		}
-		return r.adminUsersService.GetRole(ctx, input.ID)
+		return t.service.GetRole(ctx, input.ID)
 
 	case "create":
 		if len(input.Roles) == 0 {
@@ -437,7 +492,7 @@ func (r *Registry) handleRoles(ctx context.Context, input gkitmodels.AdminUsersI
 				Name: ro.Name,
 			})
 		}
-		return r.adminUsersService.CreateRoles(ctx, sdkRoles)
+		return t.service.CreateRoles(ctx, sdkRoles)
 
 	case "update":
 		if len(input.Roles) == 0 {
@@ -453,13 +508,13 @@ func (r *Registry) handleRoles(ctx context.Context, input gkitmodels.AdminUsersI
 				Name: ro.Name,
 			})
 		}
-		return r.adminUsersService.UpdateRoles(ctx, sdkRoles)
+		return t.service.UpdateRoles(ctx, sdkRoles)
 
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete role")
 		}
-		result, err := r.adminUsersService.DeleteRole(ctx, input.ID)
+		result, err := t.service.DeleteRole(ctx, input.ID)
 		if err != nil {
 			return nil, err
 		}

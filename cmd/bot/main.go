@@ -15,11 +15,24 @@ import (
 	"google.golang.org/adk/cmd/launcher/full"
 
 	appagent "github.com/tihn/amo-ai-tgbot-go/app/agent"
+	"github.com/tihn/amo-ai-tgbot-go/app/agent/tools"
 	tgHandler "github.com/tihn/amo-ai-tgbot-go/app/telegram"
 	"github.com/tihn/amo-ai-tgbot-go/config"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/crm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/infrastructure/llm"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/auth"
+	crmActivities "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/activities"
+	crmAdminIntegrations "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_integrations"
+	crmAdminPipelines "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_pipelines"
+	crmAdminSchema "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_schema"
+	crmAdminUsers "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_users"
+	crmCatalogs "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/catalogs"
+	crmComplexCreate "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/complex_create"
+	crmCustomers "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/customers"
+	crmEntities "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/entities"
+	crmFiles "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/files"
+	crmProducts "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/products"
+	crmUnsorted "github.com/tihn/amo-ai-tgbot-go/internal/services/crm/unsorted"
 	"github.com/tihn/amo-ai-tgbot-go/internal/services/telegram"
 )
 
@@ -69,8 +82,50 @@ func main() {
 	// LLM provider (Ollama via OpenAI-compatible API)
 	llmModel := llm.NewProvider(cfg)
 
-	// AI agent (ADK Runner, no tools yet)
-	aiAgent, err := appagent.NewAgent(ctx, llmModel)
+	// === CRM Services ===
+	sdk := crmClient.SDK()
+
+	entitiesSvc, err := crmEntities.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init entities service: %v", err)
+	}
+	activitiesSvc, err := crmActivities.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init activities service: %v", err)
+	}
+	complexCreateSvc, err := crmComplexCreate.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init complex_create service: %v", err)
+	}
+	catalogsSvc, err := crmCatalogs.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init catalogs service: %v", err)
+	}
+	unsortedSvc, err := crmUnsorted.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init unsorted service: %v", err)
+	}
+	customersSvc, err := crmCustomers.New(ctx, sdk)
+	if err != nil {
+		log.Fatalf("Failed to init customers service: %v", err)
+	}
+
+	productsSvc := crmProducts.NewService(sdk)
+	filesSvc := crmFiles.NewService(sdk)
+	adminSchemaSvc := crmAdminSchema.NewService(sdk)
+	adminPipelinesSvc := crmAdminPipelines.New(sdk)
+	adminUsersSvc := crmAdminUsers.NewService(sdk)
+	adminIntegrationsSvc := crmAdminIntegrations.NewService(sdk)
+
+	// CRM Toolset for ADK agent
+	crmToolset := tools.NewCRMToolset(
+		entitiesSvc, activitiesSvc, complexCreateSvc, productsSvc,
+		catalogsSvc, filesSvc, unsortedSvc, customersSvc,
+		adminSchemaSvc, adminPipelinesSvc, adminUsersSvc, adminIntegrationsSvc,
+	)
+
+	// AI agent with CRM tools
+	aiAgent, err := appagent.NewAgent(ctx, llmModel, crmToolset)
 	if err != nil {
 		log.Fatalf("Failed to init AI agent: %v", err)
 	}

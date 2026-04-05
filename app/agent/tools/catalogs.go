@@ -1,11 +1,14 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/catalogs"
 )
 
 // catalogsRequiredFields определяет обязательные поля для каждого action.
@@ -246,27 +249,106 @@ var catalogsSchemas = map[string]map[string]any{
 	},
 }
 
-func (r *Registry) RegisterCatalogsTool() {
-	r.addTool(ToolDefinition{
-		Name: "catalogs",
-		Description: "Управление каталогами и их элементами в amoCRM. " +
-			"Actions (каталоги): list, get, create, update, delete. " +
-			"Actions (элементы): list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element. " +
-			"Вызови только с action чтобы получить полную схему параметров и список доступных каталогов.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			m, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("catalogs: неверный формат input")
-			}
-			return r.handleCatalogsShadow(ctx, m)
+// CatalogsTool — нативный ADK tool для управления каталогами amoCRM.
+type CatalogsTool struct {
+	service catalogs.Service
+}
+
+// NewCatalogsTool создаёт новый CatalogsTool с указанным сервисом.
+func NewCatalogsTool(service catalogs.Service) *CatalogsTool {
+	return &CatalogsTool{service: service}
+}
+
+// Name возвращает имя инструмента.
+func (t *CatalogsTool) Name() string { return "catalogs" }
+
+// Description возвращает описание инструмента.
+func (t *CatalogsTool) Description() string {
+	return "Управление каталогами и их элементами в amoCRM. " +
+		"Actions (каталоги): list, get, create, update, delete. " +
+		"Actions (элементы): list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element. " +
+		"Вызови только с action чтобы получить полную схему параметров и список доступных каталогов."
+}
+
+// IsLongRunning всегда false для синхронных CRM операций.
+func (t *CatalogsTool) IsLongRunning() bool { return false }
+
+// Declaration возвращает genai.FunctionDeclaration для регистрации в ADK.
+func (t *CatalogsTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, create, update, delete (каталоги); list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element (элементы)",
+				},
+				"catalog_name": {
+					Type:        genai.TypeString,
+					Description: "Название каталога (из available_values.catalog_names)",
+				},
+				"element_id": {
+					Type:        genai.TypeInteger,
+					Description: "ID элемента каталога",
+				},
+				"with": {
+					Type: genai.TypeArray,
+					Items: &genai.Schema{
+						Type: genai.TypeString,
+					},
+					Description: "Дополнительные данные для get_element: invoice_link, supplier_field_values",
+				},
+				"filter": {
+					Type:        genai.TypeObject,
+					Description: "Параметры фильтрации (page, limit, query, ids, type)",
+				},
+				"data": {
+					Type:        genai.TypeObject,
+					Description: "Данные каталога для create/update",
+				},
+				"element_data": {
+					Type:        genai.TypeObject,
+					Description: "Данные элемента каталога для create_element/update_element",
+				},
+				"link_data": {
+					Type:        genai.TypeObject,
+					Description: "Данные связи элемента с сущностью для link_element/unlink_element",
+				},
+			},
+			Required: []string{"action"},
 		},
-	})
+	}
+}
+
+// Run выполняет инструмент. Реализует Shadow Tool паттерн:
+// Schema mode: обязательные поля action'а отсутствуют → возвращает схему + catalog_names.
+// Execute mode: все обязательные поля присутствуют → выполняет действие.
+func (t *CatalogsTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	m, ok := args.(map[string]any)
+	if !ok {
+		// args может прийти как []byte или строка — попробуем десериализовать
+		raw, err := json.Marshal(args)
+		if err != nil {
+			return nil, fmt.Errorf("catalogs: неверный формат args")
+		}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return nil, fmt.Errorf("catalogs: неверный формат args")
+		}
+	}
+
+	result, err := t.handleCatalogsShadow(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
 }
 
 // handleCatalogsShadow реализует Shadow Tool паттерн:
 // Schema mode: action присутствует, обязательные поля action'а отсутствуют → возвращает схему + catalog_names.
 // Execute mode: все обязательные поля присутствуют → выполняет действие.
-func (r *Registry) handleCatalogsShadow(ctx context.Context, input map[string]any) (any, error) {
+func (t *CatalogsTool) handleCatalogsShadow(ctx tool.Context, input map[string]any) (any, error) {
 	action, _ := input["action"].(string)
 	if action == "" {
 		return map[string]any{
@@ -285,7 +367,7 @@ func (r *Registry) handleCatalogsShadow(ctx context.Context, input map[string]an
 
 	// Граница schema/execute: isSchemaMode определён в unsorted.go (пакет tools)
 	if isSchemaMode(input, required) {
-		return r.catalogsSchemaResponse(action), nil
+		return t.catalogsSchemaResponse(action), nil
 	}
 
 	// Execute mode: десериализуем map в CatalogsInput через JSON roundtrip
@@ -294,11 +376,11 @@ func (r *Registry) handleCatalogsShadow(ctx context.Context, input map[string]an
 		return nil, fmt.Errorf("catalogs: failed to parse input: %w", err)
 	}
 
-	return r.executeCatalogs(ctx, catalogsInput)
+	return t.executeCatalogs(ctx, catalogsInput)
 }
 
 // catalogsSchemaResponse формирует ответ со схемой для данного action + доступные каталоги.
-func (r *Registry) catalogsSchemaResponse(action string) map[string]any {
+func (t *CatalogsTool) catalogsSchemaResponse(action string) map[string]any {
 	schema, ok := catalogsSchemas[action]
 	if !ok {
 		schema = map[string]any{
@@ -313,7 +395,7 @@ func (r *Registry) catalogsSchemaResponse(action string) map[string]any {
 		"tool":   "catalogs",
 		"action": action,
 		"available_values": map[string]any{
-			"catalog_names": r.catalogsService.CatalogNames(),
+			"catalog_names": t.service.CatalogNames(),
 		},
 	}
 	for k, v := range schema {
@@ -336,39 +418,39 @@ func mapToCatalogsInput(raw map[string]any) (gkitmodels.CatalogsInput, error) {
 }
 
 // executeCatalogs выполняет действие с каталогами/элементами (Execute mode).
-func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.CatalogsInput) (any, error) {
+func (t *CatalogsTool) executeCatalogs(ctx tool.Context, input gkitmodels.CatalogsInput) (any, error) {
 	switch input.Action {
 
 	// Catalogs
 	case "list":
-		return r.catalogsService.ListCatalogs(ctx, input.Filter)
+		return t.service.ListCatalogs(ctx, input.Filter)
 
 	case "get":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
-		return r.catalogsService.GetCatalog(ctx, input.CatalogName)
+		return t.service.GetCatalog(ctx, input.CatalogName)
 
 	case "create":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for create")
 		}
-		return r.catalogsService.CreateCatalog(ctx, input.Data)
+		return t.service.CreateCatalog(ctx, input.Data)
 
 	case "update":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for update")
 		}
-		return r.catalogsService.UpdateCatalog(ctx, input.CatalogName, input.Data)
+		return t.service.UpdateCatalog(ctx, input.CatalogName, input.Data)
 
 	case "delete":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
-		if err := r.catalogsService.DeleteCatalog(ctx, input.CatalogName); err != nil {
+		if err := t.service.DeleteCatalog(ctx, input.CatalogName); err != nil {
 			return nil, err
 		}
 		return map[string]any{"success": true}, nil
@@ -376,31 +458,31 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 	// Elements
 	case "list_elements":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
-		return r.catalogsService.ListElements(ctx, input.CatalogName, input.Filter)
+		return t.service.ListElements(ctx, input.CatalogName, input.Filter)
 
 	case "get_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required")
 		}
-		return r.catalogsService.GetElement(ctx, input.CatalogName, input.ElementID, input.With)
+		return t.service.GetElement(ctx, input.CatalogName, input.ElementID, input.With)
 
 	case "create_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementData == nil {
 			return nil, fmt.Errorf("element_data is required for create_element")
 		}
-		return r.catalogsService.CreateElement(ctx, input.CatalogName, input.ElementData)
+		return t.service.CreateElement(ctx, input.CatalogName, input.ElementData)
 
 	case "update_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required")
@@ -408,16 +490,16 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 		if input.ElementData == nil {
 			return nil, fmt.Errorf("element_data is required for update_element")
 		}
-		return r.catalogsService.UpdateElement(ctx, input.CatalogName, input.ElementID, input.ElementData)
+		return t.service.UpdateElement(ctx, input.CatalogName, input.ElementID, input.ElementData)
 
 	case "delete_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required")
 		}
-		if err := r.catalogsService.DeleteElement(ctx, input.CatalogName, input.ElementID); err != nil {
+		if err := t.service.DeleteElement(ctx, input.CatalogName, input.ElementID); err != nil {
 			return nil, err
 		}
 		return map[string]any{"success": true}, nil
@@ -425,7 +507,7 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 	// Link/Unlink
 	case "link_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required")
@@ -433,7 +515,7 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 		if input.LinkData == nil {
 			return nil, fmt.Errorf("link_data is required")
 		}
-		err := r.catalogsService.LinkElement(
+		err := t.service.LinkElement(
 			ctx, input.CatalogName, input.ElementID,
 			input.LinkData.EntityType, input.LinkData.EntityID, input.LinkData.Metadata,
 		)
@@ -444,7 +526,7 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 
 	case "unlink_element":
 		if input.CatalogName == "" {
-			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(r.catalogsService.CatalogNames()))
+			return nil, fmt.Errorf("catalog_name is required. Available: %s", joinNames(t.service.CatalogNames()))
 		}
 		if input.ElementID == 0 {
 			return nil, fmt.Errorf("element_id is required")
@@ -452,7 +534,7 @@ func (r *Registry) executeCatalogs(ctx context.Context, input gkitmodels.Catalog
 		if input.LinkData == nil {
 			return nil, fmt.Errorf("link_data is required")
 		}
-		err := r.catalogsService.UnlinkElement(
+		err := t.service.UnlinkElement(
 			ctx, input.CatalogName, input.ElementID,
 			input.LinkData.EntityType, input.LinkData.EntityID,
 		)
@@ -480,3 +562,4 @@ func joinNames(names []string) string {
 	}
 	return result
 }
+

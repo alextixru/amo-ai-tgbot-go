@@ -5,12 +5,143 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/complex_create"
 )
+
+// ComplexCreateTool реализует нативный ADK Tool интерфейс для комплексного создания сделок.
+type ComplexCreateTool struct {
+	service complex_create.Service
+}
+
+// NewComplexCreateTool создаёт новый экземпляр ComplexCreateTool.
+func NewComplexCreateTool(service complex_create.Service) *ComplexCreateTool {
+	return &ComplexCreateTool{service: service}
+}
+
+// Name возвращает имя инструмента.
+func (t *ComplexCreateTool) Name() string {
+	return "complex_create"
+}
+
+// Description возвращает описание инструмента.
+func (t *ComplexCreateTool) Description() string {
+	return "Создать сделку с контактами и компанией в amoCRM. " +
+		"Actions: create (одна сделка), create_batch (до 50 сделок). " +
+		"Вызови с {\"action\": \"create\"} без других полей чтобы получить схему параметров и доступные значения."
+}
+
+// IsLongRunning возвращает false — инструмент не является длительной операцией.
+func (t *ComplexCreateTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration возвращает FunctionDeclaration для регистрации в genai.
+func (t *ComplexCreateTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: create (одна сделка) или create_batch (до 50 сделок). Если не указан — возвращается схема параметров.",
+				},
+				"lead": {
+					Type:        genai.TypeObject,
+					Description: "Данные сделки (обязательно для action=create).",
+					Properties: map[string]*genai.Schema{
+						"name":                  {Type: genai.TypeString, Description: "Название сделки"},
+						"price":                 {Type: genai.TypeInteger, Description: "Бюджет"},
+						"pipeline_name":         {Type: genai.TypeString, Description: "Название воронки"},
+						"status_name":           {Type: genai.TypeString, Description: "Название статуса в воронке"},
+						"responsible_user_name": {Type: genai.TypeString, Description: "Имя ответственного пользователя"},
+						"custom_fields_values":  {Type: genai.TypeObject, Description: "Кастомные поля сделки. Формат: {field_id: [{value: значение}]}"},
+						"tags": {
+							Type:        genai.TypeArray,
+							Description: "Теги сделки (названия)",
+							Items:       &genai.Schema{Type: genai.TypeString},
+						},
+					},
+				},
+				"contacts": {
+					Type:        genai.TypeArray,
+					Description: "Контакты для создания и привязки (для action=create).",
+					Items: &genai.Schema{
+						Type: genai.TypeObject,
+						Properties: map[string]*genai.Schema{
+							"name":                  {Type: genai.TypeString, Description: "Имя контакта (полное ФИО)"},
+							"first_name":            {Type: genai.TypeString, Description: "Имя (отдельно)"},
+							"last_name":             {Type: genai.TypeString, Description: "Фамилия (отдельно)"},
+							"phone":                 {Type: genai.TypeString, Description: "Телефон (добавляется как кастомное поле PHONE)"},
+							"email":                 {Type: genai.TypeString, Description: "Email (добавляется как кастомное поле EMAIL)"},
+							"is_main":               {Type: genai.TypeBoolean, Description: "Основной контакт"},
+							"responsible_user_name": {Type: genai.TypeString, Description: "Имя ответственного пользователя"},
+							"custom_fields_values":  {Type: genai.TypeObject, Description: "Прочие кастомные поля контакта"},
+						},
+					},
+				},
+				"company": {
+					Type:        genai.TypeObject,
+					Description: "Компания для создания и привязки (для action=create).",
+					Properties: map[string]*genai.Schema{
+						"name":                  {Type: genai.TypeString, Description: "Название компании"},
+						"responsible_user_name": {Type: genai.TypeString, Description: "Имя ответственного пользователя"},
+						"custom_fields_values":  {Type: genai.TypeObject, Description: "Кастомные поля компании"},
+					},
+				},
+				"items": {
+					Type:        genai.TypeArray,
+					Description: "Массив сделок для создания (до 50 штук). Каждый элемент: {lead, contacts?, company?}. Используется для action=create_batch.",
+					Items: &genai.Schema{
+						Type: genai.TypeObject,
+						Properties: map[string]*genai.Schema{
+							"lead":     {Type: genai.TypeObject, Description: "Данные сделки"},
+							"contacts": {Type: genai.TypeArray, Description: "Контакты", Items: &genai.Schema{Type: genai.TypeObject}},
+							"company":  {Type: genai.TypeObject, Description: "Компания"},
+						},
+					},
+				},
+			},
+			Required: []string{"action"},
+		},
+	}
+}
+
+// Run выполняет инструмент. args — map[string]any с параметрами вызова.
+func (t *ComplexCreateTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	m, ok := args.(map[string]any)
+	if !ok {
+		// Попробуем через JSON roundtrip
+		b, err := json.Marshal(args)
+		if err != nil {
+			return t.complexCreateSchema(), nil
+		}
+		if err := json.Unmarshal(b, &m); err != nil {
+			return t.complexCreateSchema(), nil
+		}
+	}
+
+	action, _ := m["action"].(string)
+
+	switch action {
+	case "create":
+		return t.handleComplexCreate(ctx, m)
+	case "create_batch":
+		return t.handleComplexCreateBatch(ctx, m)
+	default:
+		// Нет action или неизвестный — возвращаем схему
+		return t.complexCreateSchema(), nil
+	}
+}
 
 // complexCreateSchema — полная схема полей, возвращаемая в schema mode.
 // Возвращается LLM при первом вызове без обязательных полей.
-func (r *Registry) complexCreateSchema() map[string]any {
+func (t *ComplexCreateTool) complexCreateSchema() map[string]any {
 	return map[string]any{
 		"schema":      true,
 		"tool":        "complex_create",
@@ -100,63 +231,29 @@ func (r *Registry) complexCreateSchema() map[string]any {
 			},
 		},
 		"available_values": map[string]any{
-			"pipelines": r.complexCreateService.PipelineNames(),
-			"statuses":  r.complexCreateService.StatusesByPipeline(),
-			"users":     r.complexCreateService.UserNames(),
+			"pipelines": t.service.PipelineNames(),
+			"statuses":  t.service.StatusesByPipeline(),
+			"users":     t.service.UserNames(),
 		},
 	}
-}
-
-func (r *Registry) RegisterComplexCreateTool() {
-	r.addTool(ToolDefinition{
-		Name: "complex_create",
-		Description: "Создать сделку с контактами и компанией в amoCRM. " +
-			"Actions: create (одна сделка), create_batch (до 50 сделок). " +
-			"Вызови с {\"action\": \"create\"} без других полей чтобы получить схему параметров и доступные значения.",
-		Handler: func(ctx context.Context, rawInput any) (any, error) {
-			m, ok := rawInput.(map[string]any)
-			if !ok {
-				// Попробуем через JSON roundtrip
-				b, err := json.Marshal(rawInput)
-				if err != nil {
-					return r.complexCreateSchema(), nil
-				}
-				if err := json.Unmarshal(b, &m); err != nil {
-					return r.complexCreateSchema(), nil
-				}
-			}
-
-			action, _ := m["action"].(string)
-
-			switch action {
-			case "create":
-				return r.handleComplexCreate(ctx, m)
-			case "create_batch":
-				return r.handleComplexCreateBatch(ctx, m)
-			default:
-				// Нет action или неизвестный — возвращаем схему
-				return r.complexCreateSchema(), nil
-			}
-		},
-	})
 }
 
 // handleComplexCreate — execute mode для create.
 // Граница: lead.name должен быть непустым.
-func (r *Registry) handleComplexCreate(ctx context.Context, m map[string]any) (any, error) {
+func (t *ComplexCreateTool) handleComplexCreate(ctx context.Context, m map[string]any) (map[string]any, error) {
 	leadRaw, hasLead := m["lead"]
 	if !hasLead || leadRaw == nil {
-		return r.complexCreateSchema(), nil
+		return t.complexCreateSchema(), nil
 	}
 
 	leadMap, ok := leadRaw.(map[string]any)
 	if !ok {
-		return r.complexCreateSchema(), nil
+		return t.complexCreateSchema(), nil
 	}
 
 	name, _ := leadMap["name"].(string)
 	if name == "" {
-		return r.complexCreateSchema(), nil
+		return t.complexCreateSchema(), nil
 	}
 
 	// JSON roundtrip map → ComplexCreateInput
@@ -170,20 +267,24 @@ func (r *Registry) handleComplexCreate(ctx context.Context, m map[string]any) (a
 		return nil, fmt.Errorf("complex_create: unmarshal input: %w", err)
 	}
 
-	return r.complexCreateService.CreateComplex(ctx, &input)
+	result, err := t.service.CreateComplex(ctx, &input)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
 }
 
 // handleComplexCreateBatch — execute mode для create_batch.
 // Граница: items должен быть непустым массивом.
-func (r *Registry) handleComplexCreateBatch(ctx context.Context, m map[string]any) (any, error) {
+func (t *ComplexCreateTool) handleComplexCreateBatch(ctx context.Context, m map[string]any) (map[string]any, error) {
 	itemsRaw, hasItems := m["items"]
 	if !hasItems || itemsRaw == nil {
-		return r.complexCreateSchema(), nil
+		return t.complexCreateSchema(), nil
 	}
 
 	itemsSlice, ok := itemsRaw.([]any)
 	if !ok || len(itemsSlice) == 0 {
-		return r.complexCreateSchema(), nil
+		return t.complexCreateSchema(), nil
 	}
 
 	// JSON roundtrip map → ComplexCreateBatchInput
@@ -197,5 +298,9 @@ func (r *Registry) handleComplexCreateBatch(ctx context.Context, m map[string]an
 		return nil, fmt.Errorf("complex_create_batch: unmarshal input: %w", err)
 	}
 
-	return r.complexCreateService.CreateComplexBatch(ctx, input.Items)
+	result, err := t.service.CreateComplexBatch(ctx, input.Items)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
 }

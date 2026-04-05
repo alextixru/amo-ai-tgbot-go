@@ -6,26 +6,93 @@ import (
 	"fmt"
 	"log"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/entities"
 	toolmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
-// entitiesMinimalSchema — минимальная JSON Schema для tool entities.
-// LLM видит только entity_type и action; полная схема возвращается в Schema mode.
-var entitiesMinimalSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"entity_type": map[string]any{
-			"type":        "string",
-			"description": "Тип сущности: leads, contacts, companies",
-			"enum":        []string{"leads", "contacts", "companies"},
+// EntitiesTool — нативный ADK tool для работы с основными сущностями amoCRM (Shadow Tool паттерн).
+type EntitiesTool struct {
+	service entities.Service
+}
+
+// NewEntitiesTool создаёт новый экземпляр EntitiesTool.
+func NewEntitiesTool(service entities.Service) *EntitiesTool {
+	return &EntitiesTool{service: service}
+}
+
+// Name реализует tool.Tool.
+func (t *EntitiesTool) Name() string {
+	return "entities"
+}
+
+// Description реализует tool.Tool.
+func (t *EntitiesTool) Description() string {
+	return "CRUD для сделок, контактов, компаний amoCRM. Actions: search, get, create, update, sync, link, unlink. Вызови с entity_type + action чтобы получить схему параметров."
+}
+
+// IsLongRunning реализует tool.Tool.
+func (t *EntitiesTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration реализует toolinternal.FunctionTool (duck typing).
+func (t *EntitiesTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"entity_type": {
+					Type:        genai.TypeString,
+					Description: "Тип сущности: leads, contacts, companies",
+					Enum:        []string{"leads", "contacts", "companies"},
+				},
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: search, get, create, update, sync, link, unlink, get_chats, link_chats",
+					Enum:        []string{"search", "get", "create", "update", "sync", "link", "unlink", "get_chats", "link_chats"},
+				},
+			},
+			Required: []string{"entity_type", "action"},
 		},
-		"action": map[string]any{
-			"type":        "string",
-			"description": "Действие: search, get, create, update, sync, link, unlink, get_chats, link_chats",
-			"enum":        []string{"search", "get", "create", "update", "sync", "link", "unlink", "get_chats", "link_chats"},
-		},
-	},
-	"required": []string{"entity_type", "action"},
+	}
+}
+
+// Run реализует toolinternal.FunctionTool (duck typing).
+func (t *EntitiesTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	log.Printf("[entities] handler called, args type=%T value=%v", args, args)
+	m, ok := args.(map[string]any)
+	if !ok {
+		log.Printf("[entities] args is not map[string]any, got %T", args)
+		return nil, fmt.Errorf("entities: неверный формат input")
+	}
+
+	entityType, _ := m["entity_type"].(string)
+	action, _ := m["action"].(string)
+
+	if entityType == "" {
+		return nil, fmt.Errorf("entities: entity_type обязателен (leads, contacts, companies)")
+	}
+	if action == "" {
+		return nil, fmt.Errorf("entities: action обязателен")
+	}
+
+	if t.entitiesIsSchemaMode(action, m) {
+		resp := t.entitiesBuildSchemaResponse(entityType, action)
+		b, _ := json.Marshal(resp)
+		log.Printf("[entities] schema mode, action=%s entity_type=%s, response size=%d bytes", action, entityType, len(b))
+		return resp, nil
+	}
+
+	result, err := t.entitiesExecute(ctx, m, entityType, action)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
 }
 
 // entitiesRequiredFields определяет обязательные поля (помимо entity_type/action) для каждого action.
@@ -49,45 +116,9 @@ type fieldDesc struct {
 	Required    bool   `json:"required,omitempty"`
 }
 
-// RegisterEntitiesTool регистрирует инструмент для работы с основными сущностями (Shadow Tool паттерн).
-func (r *Registry) RegisterEntitiesTool() {
-	r.addTool(ToolDefinition{
-		Name:        "entities",
-		Description: "CRUD для сделок, контактов, компаний amoCRM. Actions: search, get, create, update, sync, link, unlink. Вызови с entity_type + action чтобы получить схему параметров.",
-		InputSchema: entitiesMinimalSchema,
-		Handler: func(ctx context.Context, input any) (any, error) {
-			log.Printf("[entities] handler called, input type=%T value=%v", input, input)
-			m, ok := input.(map[string]any)
-			if !ok {
-				log.Printf("[entities] input is not map[string]any, got %T", input)
-				return nil, fmt.Errorf("entities: неверный формат input")
-			}
-
-			entityType, _ := m["entity_type"].(string)
-			action, _ := m["action"].(string)
-
-			if entityType == "" {
-				return nil, fmt.Errorf("entities: entity_type обязателен (leads, contacts, companies)")
-			}
-			if action == "" {
-				return nil, fmt.Errorf("entities: action обязателен")
-			}
-
-			if r.entitiesIsSchemaMode(action, m) {
-				resp := r.entitiesBuildSchemaResponse(entityType, action)
-				b, _ := json.Marshal(resp)
-				log.Printf("[entities] schema mode, action=%s entity_type=%s, response size=%d bytes", action, entityType, len(b))
-				return resp, nil
-			}
-
-			return r.entitiesExecute(ctx, m, entityType, action)
-		},
-	})
-}
-
 // entitiesIsSchemaMode определяет, нужно ли вернуть схему.
 // Schema mode: если для action есть обязательные поля и хотя бы одно из них отсутствует.
-func (r *Registry) entitiesIsSchemaMode(action string, m map[string]any) bool {
+func (t *EntitiesTool) entitiesIsSchemaMode(action string, m map[string]any) bool {
 	required, known := entitiesRequiredFields[action]
 	if !known {
 		// Неизвестный action — отдаём схему чтобы описать доступные actions
@@ -115,8 +146,8 @@ func (r *Registry) entitiesIsSchemaMode(action string, m map[string]any) bool {
 }
 
 // entitiesBuildSchemaResponse формирует schema response с полной схемой полей и справочными данными.
-func (r *Registry) entitiesBuildSchemaResponse(entityType, action string) map[string]any {
-	svc := r.entitiesService
+func (t *EntitiesTool) entitiesBuildSchemaResponse(entityType, action string) map[string]any {
+	svc := t.service
 
 	// Справочные данные
 	availableValues := map[string]any{
@@ -343,7 +374,7 @@ func entitiesSchemaForAction(entityType, action string) (required, optional map[
 }
 
 // entitiesExecute десериализует input в EntitiesInput и выполняет действие.
-func (r *Registry) entitiesExecute(ctx context.Context, m map[string]any, entityType, action string) (any, error) {
+func (t *EntitiesTool) entitiesExecute(ctx context.Context, m map[string]any, entityType, action string) (any, error) {
 	// JSON roundtrip: map[string]any → EntitiesInput
 	raw, err := json.Marshal(m)
 	if err != nil {
@@ -353,17 +384,17 @@ func (r *Registry) entitiesExecute(ctx context.Context, m map[string]any, entity
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return nil, fmt.Errorf("entities: unmarshal input: %w", err)
 	}
-	return r.handleEntities(ctx, input)
+	return t.handleEntities(ctx, input)
 }
 
-func (r *Registry) handleEntities(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
+func (t *EntitiesTool) handleEntities(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
 	switch input.EntityType {
 	case "leads":
-		return r.handleLeads(ctx, input)
+		return t.handleLeads(ctx, input)
 	case "contacts":
-		return r.handleContacts(ctx, input)
+		return t.handleContacts(ctx, input)
 	case "companies":
-		return r.handleCompanies(ctx, input)
+		return t.handleCompanies(ctx, input)
 	default:
 		return nil, fmt.Errorf("unknown entity_type: %s (expected: leads, contacts, companies)", input.EntityType)
 	}
@@ -371,26 +402,26 @@ func (r *Registry) handleEntities(ctx context.Context, input toolmodels.Entities
 
 // ============ LEADS ============
 
-func (r *Registry) handleLeads(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
+func (t *EntitiesTool) handleLeads(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchLeads(ctx, input.Filter, input.With)
+		return t.service.SearchLeads(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetLead(ctx, input.ID, input.With)
+		return t.service.GetLead(ctx, input.ID, input.With)
 	case "create":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.CreateLeads(ctx, input.DataList)
+			return t.service.CreateLeads(ctx, input.DataList)
 		}
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
-		return r.entitiesService.CreateLead(ctx, input.Data)
+		return t.service.CreateLead(ctx, input.Data)
 	case "update":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.UpdateLeads(ctx, input.DataList)
+			return t.service.UpdateLeads(ctx, input.DataList)
 		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
@@ -398,22 +429,22 @@ func (r *Registry) handleLeads(ctx context.Context, input toolmodels.EntitiesInp
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
-		return r.entitiesService.UpdateLead(ctx, input.ID, input.Data)
+		return t.service.UpdateLead(ctx, input.ID, input.Data)
 	case "sync":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'sync'")
 		}
-		return r.entitiesService.SyncLead(ctx, input.ID, input.Data)
+		return t.service.SyncLead(ctx, input.ID, input.Data)
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
 		}
-		return r.entitiesService.LinkLead(ctx, input.ID, input.LinkTo)
+		return t.service.LinkLead(ctx, input.ID, input.LinkTo)
 	case "unlink":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'unlink'")
 		}
-		return r.entitiesService.UnlinkLead(ctx, input.ID, input.LinkTo)
+		return t.service.UnlinkLead(ctx, input.ID, input.LinkTo)
 	default:
 		return nil, fmt.Errorf("unknown action for leads: %s", input.Action)
 	}
@@ -421,26 +452,26 @@ func (r *Registry) handleLeads(ctx context.Context, input toolmodels.EntitiesInp
 
 // ============ CONTACTS ============
 
-func (r *Registry) handleContacts(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
+func (t *EntitiesTool) handleContacts(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchContacts(ctx, input.Filter, input.With)
+		return t.service.SearchContacts(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetContact(ctx, input.ID, input.With)
+		return t.service.GetContact(ctx, input.ID, input.With)
 	case "create":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.CreateContacts(ctx, input.DataList)
+			return t.service.CreateContacts(ctx, input.DataList)
 		}
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
-		return r.entitiesService.CreateContact(ctx, input.Data)
+		return t.service.CreateContact(ctx, input.Data)
 	case "update":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.UpdateContacts(ctx, input.DataList)
+			return t.service.UpdateContacts(ctx, input.DataList)
 		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
@@ -448,32 +479,32 @@ func (r *Registry) handleContacts(ctx context.Context, input toolmodels.Entities
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
-		return r.entitiesService.UpdateContact(ctx, input.ID, input.Data)
+		return t.service.UpdateContact(ctx, input.ID, input.Data)
 	case "sync":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'sync'")
 		}
-		return r.entitiesService.SyncContact(ctx, input.ID, input.Data)
+		return t.service.SyncContact(ctx, input.ID, input.Data)
 	case "get_chats":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get_chats'")
 		}
-		return r.entitiesService.GetContactChats(ctx, input.ID)
+		return t.service.GetContactChats(ctx, input.ID)
 	case "link_chats":
 		if len(input.ChatLinks) == 0 {
 			return nil, fmt.Errorf("chat_links is required for action 'link_chats'")
 		}
-		return r.entitiesService.LinkContactChats(ctx, input.ChatLinks)
+		return t.service.LinkContactChats(ctx, input.ChatLinks)
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
 		}
-		return r.entitiesService.LinkContact(ctx, input.ID, input.LinkTo)
+		return t.service.LinkContact(ctx, input.ID, input.LinkTo)
 	case "unlink":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'unlink'")
 		}
-		return r.entitiesService.UnlinkContact(ctx, input.ID, input.LinkTo)
+		return t.service.UnlinkContact(ctx, input.ID, input.LinkTo)
 	default:
 		return nil, fmt.Errorf("unknown action for contacts: %s", input.Action)
 	}
@@ -481,26 +512,26 @@ func (r *Registry) handleContacts(ctx context.Context, input toolmodels.Entities
 
 // ============ COMPANIES ============
 
-func (r *Registry) handleCompanies(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
+func (t *EntitiesTool) handleCompanies(ctx context.Context, input toolmodels.EntitiesInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.entitiesService.SearchCompanies(ctx, input.Filter, input.With)
+		return t.service.SearchCompanies(ctx, input.Filter, input.With)
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'get'")
 		}
-		return r.entitiesService.GetCompany(ctx, input.ID, input.With)
+		return t.service.GetCompany(ctx, input.ID, input.With)
 	case "create":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.CreateCompanies(ctx, input.DataList)
+			return t.service.CreateCompanies(ctx, input.DataList)
 		}
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'create'")
 		}
-		return r.entitiesService.CreateCompany(ctx, input.Data)
+		return t.service.CreateCompany(ctx, input.Data)
 	case "update":
 		if len(input.DataList) > 0 {
-			return r.entitiesService.UpdateCompanies(ctx, input.DataList)
+			return t.service.UpdateCompanies(ctx, input.DataList)
 		}
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for action 'update'")
@@ -508,23 +539,24 @@ func (r *Registry) handleCompanies(ctx context.Context, input toolmodels.Entitie
 		if input.Data == nil {
 			return nil, fmt.Errorf("data or data_list is required for action 'update'")
 		}
-		return r.entitiesService.UpdateCompany(ctx, input.ID, input.Data)
+		return t.service.UpdateCompany(ctx, input.ID, input.Data)
 	case "sync":
 		if input.Data == nil {
 			return nil, fmt.Errorf("data is required for action 'sync'")
 		}
-		return r.entitiesService.SyncCompany(ctx, input.ID, input.Data)
+		return t.service.SyncCompany(ctx, input.ID, input.Data)
 	case "link":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'link'")
 		}
-		return r.entitiesService.LinkCompany(ctx, input.ID, input.LinkTo)
+		return t.service.LinkCompany(ctx, input.ID, input.LinkTo)
 	case "unlink":
 		if input.ID == 0 || input.LinkTo == nil {
 			return nil, fmt.Errorf("id and link_to are required for action 'unlink'")
 		}
-		return r.entitiesService.UnlinkCompany(ctx, input.ID, input.LinkTo)
+		return t.service.UnlinkCompany(ctx, input.ID, input.LinkTo)
 	default:
 		return nil, fmt.Errorf("unknown action for companies: %s", input.Action)
 	}
 }
+

@@ -1,12 +1,109 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/products"
 )
+
+// ProductsTool реализует нативный ADK Tool интерфейс для управления товарами в amoCRM.
+type ProductsTool struct {
+	service products.Service
+}
+
+// NewProductsTool создаёт новый ProductsTool с переданным сервисом товаров.
+func NewProductsTool(service products.Service) *ProductsTool {
+	return &ProductsTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *ProductsTool) Name() string {
+	return "products"
+}
+
+// Description implements tool.Tool.
+func (t *ProductsTool) Description() string {
+	return "Управление товарами в каталоге products amoCRM: поиск, создание, обновление, удаление, " +
+		"получение/привязка/отвязка товаров к сделкам и контактам. " +
+		"Actions: search, get, create, update, delete, get_by_entity, link, unlink, update_quantity. " +
+		"Вызови с action чтобы получить схему параметров и доступные значения."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *ProductsTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration implements the ADK runnableTool interface — описание функции для LLM.
+func (t *ProductsTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: search, get, create, update, delete, get_by_entity, link, unlink, update_quantity",
+				},
+				"product_id": {
+					Type:        genai.TypeInteger,
+					Description: "ID товара (для get, update, unlink)",
+				},
+				"with": {
+					Type:        genai.TypeArray,
+					Description: "Дополнительные данные: invoice_link, supplier_field_values",
+					Items:       &genai.Schema{Type: genai.TypeString},
+				},
+				"filter": {
+					Type:        genai.TypeObject,
+					Description: "Фильтры поиска (для search): query, limit, page, ids",
+				},
+				"data": {
+					Type:        genai.TypeObject,
+					Description: "Данные товара для create/update (одиночный): name, fields [{field_code, value}]",
+				},
+				"items": {
+					Type:        genai.TypeArray,
+					Description: "Массив товаров для batch create/update",
+					Items:       &genai.Schema{Type: genai.TypeObject},
+				},
+				"ids": {
+					Type:        genai.TypeArray,
+					Description: "Массив ID товаров (для delete или фильтрации в search)",
+					Items:       &genai.Schema{Type: genai.TypeInteger},
+				},
+				"entity": {
+					Type:        genai.TypeObject,
+					Description: "Сущность для работы со связями: {type: 'leads'|'contacts'|'companies', id: int}",
+				},
+				"product": {
+					Type:        genai.TypeObject,
+					Description: "Данные привязки товара к сущности: {id: int, quantity: int, price_id: int}",
+				},
+			},
+			Required: []string{"action"},
+		},
+	}
+}
+
+// Run implements the ADK runnableTool interface — точка входа при вызове инструмента LLM.
+func (t *ProductsTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	raw, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("products: expected map[string]any input, got %T", args)
+	}
+	result, err := t.handleProductsRaw(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // productsSchemas полная схема параметров для каждого action инструмента products.
 // Возвращается LLM при первом вызове (schema mode) вместо выполнения действия.
@@ -150,26 +247,9 @@ var productsSchemas = map[string]map[string]any{
 	},
 }
 
-func (r *Registry) RegisterProductsTool() {
-	r.addTool(ToolDefinition{
-		Name: "products",
-		Description: "Управление товарами в каталоге products amoCRM: поиск, создание, обновление, удаление, " +
-			"получение/привязка/отвязка товаров к сделкам и контактам. " +
-			"Actions: search, get, create, update, delete, get_by_entity, link, unlink, update_quantity. " +
-			"Вызови с action чтобы получить схему параметров и доступные значения.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			raw, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("products: expected map[string]any input, got %T", input)
-			}
-			return r.handleProductsRaw(ctx, raw)
-		},
-	})
-}
-
 // handleProductsRaw — точка входа shadow handler.
 // Получает raw map[string]any, определяет режим (schema/execute) и действует соответственно.
-func (r *Registry) handleProductsRaw(ctx context.Context, raw map[string]any) (any, error) {
+func (t *ProductsTool) handleProductsRaw(ctx tool.Context, raw map[string]any) (any, error) {
 	action, _ := raw["action"].(string)
 	if action == "" {
 		return map[string]any{
@@ -181,10 +261,10 @@ func (r *Registry) handleProductsRaw(ctx context.Context, raw map[string]any) (a
 	}
 
 	if isProductsSchemaMode(raw, action) {
-		return r.productsSchemaResponse(ctx, action)
+		return t.productsSchemaResponse(ctx, action)
 	}
 
-	return r.handleProducts(ctx, raw)
+	return t.handleProducts(ctx, raw)
 }
 
 // isProductsSchemaMode определяет, нужно ли вернуть схему (true) или выполнить действие (false).
@@ -213,7 +293,7 @@ func isProductsSchemaMode(raw map[string]any, action string) bool {
 }
 
 // productsSchemaResponse формирует schema response для заданного action.
-func (r *Registry) productsSchemaResponse(ctx context.Context, action string) (any, error) {
+func (t *ProductsTool) productsSchemaResponse(ctx tool.Context, action string) (any, error) {
 	schema, ok := productsSchemas[action]
 	if !ok {
 		return map[string]any{
@@ -247,16 +327,16 @@ func (r *Registry) productsSchemaResponse(ctx context.Context, action string) (a
 	}
 
 	// available_values: загружаем названия товаров (до 20 штук) для контекста LLM
-	resp["available_values"] = r.productsAvailableValues(ctx)
+	resp["available_values"] = t.productsAvailableValues(ctx)
 
 	return resp, nil
 }
 
 // productsAvailableValues возвращает справочные данные для schema response.
-func (r *Registry) productsAvailableValues(ctx context.Context) map[string]any {
+func (t *ProductsTool) productsAvailableValues(ctx tool.Context) map[string]any {
 	vals := map[string]any{}
 
-	result, err := r.productsService.SearchProducts(ctx, &gkitmodels.ProductFilter{Limit: 20, Page: 1}, nil)
+	result, err := t.service.SearchProducts(ctx, &gkitmodels.ProductFilter{Limit: 20, Page: 1}, nil)
 	if err == nil && result != nil {
 		names := make([]string, 0, len(result.Items))
 		for _, item := range result.Items {
@@ -275,7 +355,7 @@ func (r *Registry) productsAvailableValues(ctx context.Context) map[string]any {
 
 // handleProducts выполняет действие с товарами (Execute mode).
 // Конвертирует raw map[string]any в ProductsInput через JSON roundtrip.
-func (r *Registry) handleProducts(ctx context.Context, raw map[string]any) (any, error) {
+func (t *ProductsTool) handleProducts(ctx tool.Context, raw map[string]any) (any, error) {
 	b, err := json.Marshal(raw)
 	if err != nil {
 		return nil, fmt.Errorf("products: marshal input: %w", err)
@@ -284,19 +364,19 @@ func (r *Registry) handleProducts(ctx context.Context, raw map[string]any) (any,
 	if err := json.Unmarshal(b, &input); err != nil {
 		return nil, fmt.Errorf("products: unmarshal input: %w", err)
 	}
-	return r.executeProducts(ctx, input)
+	return t.executeProducts(ctx, input)
 }
 
 // executeProducts выполняет действие с уже десериализованным ProductsInput.
-func (r *Registry) executeProducts(ctx context.Context, input gkitmodels.ProductsInput) (any, error) {
+func (t *ProductsTool) executeProducts(ctx tool.Context, input gkitmodels.ProductsInput) (any, error) {
 	switch input.Action {
 	case "search":
-		return r.productsService.SearchProducts(ctx, input.Filter, input.With)
+		return t.service.SearchProducts(ctx, input.Filter, input.With)
 	case "get":
 		if input.ProductID == 0 {
 			return nil, fmt.Errorf("product_id is required for action 'get'")
 		}
-		return r.productsService.GetProduct(ctx, input.ProductID, input.With)
+		return t.service.GetProduct(ctx, input.ProductID, input.With)
 	case "create":
 		if input.Data == nil && len(input.Items) == 0 {
 			return nil, fmt.Errorf("data or items is required for action 'create'")
@@ -307,7 +387,7 @@ func (r *Registry) executeProducts(ctx context.Context, input gkitmodels.Product
 		} else {
 			items = []gkitmodels.ProductData{*input.Data}
 		}
-		return r.productsService.CreateProducts(ctx, items)
+		return t.service.CreateProducts(ctx, items)
 	case "update":
 		if input.Data == nil && len(input.Items) == 0 {
 			return nil, fmt.Errorf("data or items (for batch) are required for action 'update'")
@@ -322,33 +402,33 @@ func (r *Registry) executeProducts(ctx context.Context, input gkitmodels.Product
 			}
 			items = []gkitmodels.ProductData{data}
 		}
-		return r.productsService.UpdateProducts(ctx, items)
+		return t.service.UpdateProducts(ctx, items)
 	case "delete":
 		if len(input.IDs) == 0 {
 			return nil, fmt.Errorf("ids array is required for action 'delete'")
 		}
-		return r.productsService.DeleteProducts(ctx, input.IDs)
+		return t.service.DeleteProducts(ctx, input.IDs)
 	case "get_by_entity":
 		if input.Entity == nil {
 			return nil, fmt.Errorf("entity (type, id) is required for action 'get_by_entity'")
 		}
-		return r.productsService.GetProductsByEntity(ctx, input.Entity.Type, input.Entity.ID)
+		return t.service.GetProductsByEntity(ctx, input.Entity.Type, input.Entity.ID)
 	case "link":
 		if input.Entity == nil || input.Product == nil {
 			return nil, fmt.Errorf("entity and product are required for action 'link'")
 		}
-		return r.productsService.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
+		return t.service.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
 	case "unlink":
 		if input.Entity == nil || input.ProductID == 0 {
 			return nil, fmt.Errorf("entity and product_id are required for action 'unlink'")
 		}
-		return r.productsService.UnlinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.ProductID)
+		return t.service.UnlinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.ProductID)
 	case "update_quantity":
 		if input.Entity == nil || input.Product == nil {
 			return nil, fmt.Errorf("entity and product (id, quantity, price_id) are required for action 'update_quantity'")
 		}
 		// В amoCRM обновление количества — это повторный Link (v4 обновляет metadata если связь уже есть)
-		return r.productsService.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
+		return t.service.LinkProduct(ctx, input.Entity.Type, input.Entity.ID, input.Product.ID, input.Product.Quantity, input.Product.PriceID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}

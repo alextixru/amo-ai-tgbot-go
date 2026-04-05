@@ -6,17 +6,144 @@ import (
 	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/services"
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/files"
 )
+
+// FilesTool реализует нативный ADK Tool интерфейс для работы с файловым хранилищем amoCRM Drive.
+// Shadow Tool паттерн: LLM видит минимальную схему (только action).
+// При вызове без обязательных полей — возвращает полную схему.
+// При вызове с обязательными полями — выполняет действие.
+type FilesTool struct {
+	service files.Service
+}
+
+// NewFilesTool создаёт новый FilesTool с заданным сервисом.
+func NewFilesTool(service files.Service) *FilesTool {
+	return &FilesTool{service: service}
+}
+
+// Name возвращает имя инструмента.
+func (t *FilesTool) Name() string {
+	return "files"
+}
+
+// Description возвращает описание инструмента.
+func (t *FilesTool) Description() string {
+	return "Файловое хранилище amoCRM Drive. " +
+		"Actions: list (список файлов), get (по UUID), upload (загрузка), update (переименование), delete (удаление). " +
+		"Вызови с action чтобы получить схему параметров."
+}
+
+// IsLongRunning указывает, является ли инструмент долгосрочной операцией.
+func (t *FilesTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration возвращает декларацию функции для ADK/LLM.
+func (t *FilesTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, upload, update, delete",
+				},
+				"uuid": {
+					Type:        genai.TypeString,
+					Description: "UUID файла (для get, delete одного файла)",
+				},
+				"uuids": {
+					Type:        genai.TypeArray,
+					Description: "Список UUID файлов для массового удаления",
+					Items:       &genai.Schema{Type: genai.TypeString},
+				},
+				"filter": {
+					Type:        genai.TypeObject,
+					Description: "Параметры фильтрации (для list и get)",
+					Properties: map[string]*genai.Schema{
+						"page":        {Type: genai.TypeInteger, Description: "Номер страницы (начиная с 1)"},
+						"limit":       {Type: genai.TypeInteger, Description: "Лимит результатов на странице"},
+						"name":        {Type: genai.TypeString, Description: "Поиск по имени файла"},
+						"term":        {Type: genai.TypeString, Description: "Полнотекстовый поиск"},
+						"deleted":     {Type: genai.TypeBoolean, Description: "Включить удалённые файлы"},
+						"date_from":   {Type: genai.TypeString, Description: "Начало диапазона дат (RFC3339, например 2024-01-01T00:00:00Z)"},
+						"date_to":     {Type: genai.TypeString, Description: "Конец диапазона дат (RFC3339)"},
+						"date_preset": {Type: genai.TypeString, Description: "Пресет периода: today, yesterday, week, month"},
+						"size_from":   {Type: genai.TypeInteger, Description: "Минимальный размер файла в байтах"},
+						"size_to":     {Type: genai.TypeInteger, Description: "Максимальный размер файла в байтах"},
+						"uuids": {
+							Type:        genai.TypeArray,
+							Description: "Фильтр по UUID файлов",
+							Items:       &genai.Schema{Type: genai.TypeString},
+						},
+						"extensions": {
+							Type:        genai.TypeArray,
+							Description: "Фильтр по расширениям файлов (pdf, xlsx, jpg и т.д.)",
+							Items:       &genai.Schema{Type: genai.TypeString},
+						},
+					},
+				},
+				"upload_params": {
+					Type:        genai.TypeObject,
+					Description: "Параметры загрузки файла (для upload)",
+					Properties: map[string]*genai.Schema{
+						"local_path":   {Type: genai.TypeString, Description: "Путь к локальному файлу на сервере"},
+						"file_name":    {Type: genai.TypeString, Description: "Имя файла (если нужно переопределить)"},
+						"with_preview": {Type: genai.TypeBoolean, Description: "Создать превью (для изображений)"},
+						"file_uuid":    {Type: genai.TypeString, Description: "UUID существующего файла для загрузки новой версии"},
+					},
+				},
+				"update_data": {
+					Type:        genai.TypeObject,
+					Description: "Данные для обновления файла (для update)",
+					Properties: map[string]*genai.Schema{
+						"uuid": {Type: genai.TypeString, Description: "UUID файла для обновления"},
+						"name": {Type: genai.TypeString, Description: "Новое имя файла"},
+					},
+					Required: []string{"uuid", "name"},
+				},
+			},
+			Required: []string{"action"},
+		},
+	}
+}
+
+// Run выполняет инструмент с переданными аргументами.
+func (t *FilesTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	m, ok := args.(map[string]any)
+	if !ok {
+		// попытка через JSON roundtrip
+		data, err := json.Marshal(args)
+		if err != nil {
+			return nil, fmt.Errorf("files: неверный формат args")
+		}
+		if err := json.Unmarshal(data, &m); err != nil {
+			return nil, fmt.Errorf("files: неверный формат args")
+		}
+	}
+
+	result, err := t.handleDriveFilesShadow(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // filesSchemas содержит полные схемы параметров для каждого action tool files.
 // Возвращается LLM при первом вызове без обязательных полей (Shadow Tool — schema mode).
 var filesSchemas = map[string]any{
 	"list": map[string]any{
-		"schema":      true,
-		"tool":        "files",
-		"action":      "list",
-		"description": "Получить список файлов из amoCRM Drive с поддержкой фильтрации и пагинации.",
+		"schema":          true,
+		"tool":            "files",
+		"action":          "list",
+		"description":     "Получить список файлов из amoCRM Drive с поддержкой фильтрации и пагинации.",
 		"required_fields": map[string]any{},
 		"optional_fields": map[string]any{
 			"filter": map[string]any{
@@ -146,38 +273,18 @@ var filesSchemas = map[string]any{
 	},
 }
 
-// RegisterFilesTool регистрирует инструмент для работы с файловым хранилищем amoCRM Drive.
-// Shadow Tool паттерн: LLM видит минимальную схему (только action).
-// При вызове без обязательных полей — возвращает полную схему.
-// При вызове с обязательными полями — выполняет действие.
-func (r *Registry) RegisterFilesTool() {
-	r.addTool(ToolDefinition{
-		Name: "files",
-		Description: "Файловое хранилище amoCRM Drive. " +
-			"Actions: list (список файлов), get (по UUID), upload (загрузка), update (переименование), delete (удаление). " +
-			"Вызови с action чтобы получить схему параметров.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			m, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("files: неверный формат input")
-			}
-			return r.handleDriveFilesShadow(ctx, m)
-		},
-	})
-}
-
 // handleDriveFilesShadow реализует Shadow Tool логику для tool files.
 // Schema mode: если обязательные поля для action отсутствуют → возвращает полную схему.
 // Execute mode: если обязательные поля присутствуют → выполняет действие.
-func (r *Registry) handleDriveFilesShadow(ctx context.Context, input map[string]any) (any, error) {
+func (t *FilesTool) handleDriveFilesShadow(ctx context.Context, input map[string]any) (any, error) {
 	action, _ := input["action"].(string)
 	if action == "" {
 		return map[string]any{
-			"schema":           true,
-			"tool":             "files",
-			"error":            "action is required",
+			"schema":            true,
+			"tool":              "files",
+			"error":             "action is required",
 			"available_actions": []string{"list", "get", "upload", "update", "delete"},
-			"hint":             "Вызови с action чтобы получить схему параметров для нужного действия",
+			"hint":              "Вызови с action чтобы получить схему параметров для нужного действия",
 		}, nil
 	}
 
@@ -196,7 +303,7 @@ func (r *Registry) handleDriveFilesShadow(ctx context.Context, input map[string]
 		return nil, fmt.Errorf("failed to parse input: %w", err)
 	}
 
-	return r.handleDriveFiles(ctx, filedInput)
+	return t.handleDriveFiles(ctx, filedInput)
 }
 
 // isFilesSchemaMode определяет режим работы по наличию обязательных полей.
@@ -252,17 +359,17 @@ func mapToFilesInput(input map[string]any) (gkitmodels.FilesInput, error) {
 	return result, nil
 }
 
-func (r *Registry) handleDriveFiles(ctx context.Context, input gkitmodels.FilesInput) (any, error) {
+func (t *FilesTool) handleDriveFiles(ctx context.Context, input gkitmodels.FilesInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.filesService.ListFiles(ctx, input.Filter)
+		return t.service.ListFiles(ctx, input.Filter)
 
 	case "get":
 		if input.UUID == "" {
 			return nil, fmt.Errorf("uuid is required for action 'get'")
 		}
 		withDeleted := input.Filter != nil && input.Filter.Deleted
-		return r.filesService.GetFile(ctx, input.UUID, withDeleted)
+		return t.service.GetFile(ctx, input.UUID, withDeleted)
 
 	case "upload":
 		if input.UploadParams == nil {
@@ -277,7 +384,7 @@ func (r *Registry) handleDriveFiles(ctx context.Context, input gkitmodels.FilesI
 			WithPreview: input.UploadParams.WithPreview,
 			FileUUID:    input.UploadParams.FileUUID,
 		}
-		return r.filesService.UploadFile(ctx, params)
+		return t.service.UploadFile(ctx, params)
 
 	case "update":
 		if input.UpdateData == nil {
@@ -286,14 +393,14 @@ func (r *Registry) handleDriveFiles(ctx context.Context, input gkitmodels.FilesI
 		if input.UpdateData.UUID == "" || input.UpdateData.Name == "" {
 			return nil, fmt.Errorf("uuid and name are required in update_data")
 		}
-		return r.filesService.UpdateFile(ctx, input.UpdateData.UUID, input.UpdateData.Name)
+		return t.service.UpdateFile(ctx, input.UpdateData.UUID, input.UpdateData.Name)
 
 	case "delete":
 		uuids := normalizeDeleteUUIDs(input.UUID, input.UUIDs)
 		if len(uuids) == 0 {
 			return nil, fmt.Errorf("uuid or uuids is required for action 'delete'")
 		}
-		return nil, r.filesService.DeleteFiles(ctx, uuids)
+		return nil, t.service.DeleteFiles(ctx, uuids)
 
 	default:
 		return nil, fmt.Errorf("unknown action: %s (available: list, get, upload, update, delete)", input.Action)
@@ -321,3 +428,4 @@ func normalizeDeleteUUIDs(single string, batch []string) []string {
 	}
 	return result
 }
+

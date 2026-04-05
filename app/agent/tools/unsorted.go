@@ -1,12 +1,130 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
+
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/unsorted"
 )
+
+// UnsortedTool реализует ADK tool.Tool (+ Declaration + Run) для работы с Неразобранным amoCRM.
+type UnsortedTool struct {
+	service unsorted.Service
+}
+
+// NewUnsortedTool создаёт новый инструмент для работы с Неразобранным.
+func NewUnsortedTool(service unsorted.Service) *UnsortedTool {
+	return &UnsortedTool{service: service}
+}
+
+// Name implements tool.Tool.
+func (t *UnsortedTool) Name() string { return "unsorted" }
+
+// Description implements tool.Tool.
+func (t *UnsortedTool) Description() string {
+	return "Работа с входящими заявками amoCRM (Неразобранное). " +
+		"Actions: list (список), get (по UID), accept (принять → создаёт сделку), " +
+		"decline (отклонить), link (привязать к сделке), summary (статистика), create (создать заявку). " +
+		"Вызови с action чтобы получить схему параметров и доступные значения."
+}
+
+// IsLongRunning implements tool.Tool.
+func (t *UnsortedTool) IsLongRunning() bool { return false }
+
+// Declaration implements toolinternal.FunctionTool.
+func (t *UnsortedTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, accept, decline, link, summary, create",
+				},
+				"uid": {
+					Type:        genai.TypeString,
+					Description: "UID записи неразобранного (для get, accept, decline, link)",
+				},
+				"lead_id": {
+					Type:        genai.TypeInteger,
+					Description: "ID существующей сделки для привязки (для link)",
+				},
+				"category": {
+					Type:        genai.TypeString,
+					Description: "Категория источника: sip, forms, chats (для create)",
+				},
+				"items": {
+					Type:        genai.TypeArray,
+					Description: "Массив создаваемых заявок (для create)",
+					Items: &genai.Schema{
+						Type: genai.TypeObject,
+						Properties: map[string]*genai.Schema{
+							"source_uid":    {Type: genai.TypeString, Description: "Уникальный идентификатор источника"},
+							"source_name":   {Type: genai.TypeString, Description: "Название источника"},
+							"pipeline_name": {Type: genai.TypeString, Description: "Название воронки"},
+							"created_at":    {Type: genai.TypeString, Description: "Дата создания RFC3339"},
+						},
+					},
+				},
+				"filter": {
+					Type:        genai.TypeObject,
+					Description: "Фильтры поиска (для list, summary)",
+					Properties: map[string]*genai.Schema{
+						"page":            {Type: genai.TypeInteger, Description: "Номер страницы"},
+						"limit":           {Type: genai.TypeInteger, Description: "Лимит результатов"},
+						"pipeline_name":   {Type: genai.TypeString, Description: "Имя воронки"},
+						"created_at_from": {Type: genai.TypeString, Description: "Начало периода RFC3339"},
+						"created_at_to":   {Type: genai.TypeString, Description: "Конец периода RFC3339"},
+						"order":           {Type: genai.TypeString, Description: "Сортировка: 'created_at asc' или 'created_at desc'"},
+					},
+				},
+				"accept_params": {
+					Type:        genai.TypeObject,
+					Description: "Параметры принятия заявки (для accept)",
+					Properties: map[string]*genai.Schema{
+						"user_name":     {Type: genai.TypeString, Description: "Имя ответственного пользователя"},
+						"pipeline_name": {Type: genai.TypeString, Description: "Название воронки для создаваемой сделки"},
+						"status_name":   {Type: genai.TypeString, Description: "Название статуса для создаваемой сделки"},
+					},
+				},
+				"decline_params": {
+					Type:        genai.TypeObject,
+					Description: "Параметры отклонения заявки (для decline)",
+					Properties: map[string]*genai.Schema{
+						"user_name": {Type: genai.TypeString, Description: "Имя пользователя, выполняющего отклонение"},
+					},
+				},
+			},
+			Required: []string{"action"},
+		},
+	}
+}
+
+// Run implements toolinternal.FunctionTool.
+func (t *UnsortedTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	m, ok := args.(map[string]any)
+	if !ok {
+		// Try JSON roundtrip
+		data, err := json.Marshal(args)
+		if err != nil {
+			return nil, fmt.Errorf("unsorted: marshal args: %w", err)
+		}
+		if err := json.Unmarshal(data, &m); err != nil {
+			return nil, fmt.Errorf("unsorted: неверный формат args")
+		}
+	}
+	result, err := t.handleUnsortedShadow(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // unsortedRequiredFields определяет обязательные поля для каждого action.
 // Если все они отсутствуют или пусты — handler возвращает схему.
@@ -174,33 +292,16 @@ var unsortedSchemas = map[string]map[string]any{
 	},
 }
 
-func (r *Registry) RegisterUnsortedTool() {
-	r.addTool(ToolDefinition{
-		Name: "unsorted",
-		Description: "Работа с входящими заявками amoCRM (Неразобранное). " +
-			"Actions: list (список), get (по UID), accept (принять → создаёт сделку), " +
-			"decline (отклонить), link (привязать к сделке), summary (статистика), create (создать заявку). " +
-			"Вызови с action чтобы получить схему параметров и доступные значения.",
-		Handler: func(ctx context.Context, input any) (any, error) {
-			m, ok := input.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("unsorted: неверный формат input")
-			}
-			return r.handleUnsortedShadow(ctx, m)
-		},
-	})
-}
-
 // handleUnsortedShadow реализует Shadow Tool паттерн:
 // Schema mode: action присутствует, обязательные поля action'а отсутствуют → возвращает схему + available_values.
 // Execute mode: все обязательные поля присутствуют → выполняет действие.
-func (r *Registry) handleUnsortedShadow(ctx context.Context, input map[string]any) (any, error) {
+func (t *UnsortedTool) handleUnsortedShadow(ctx tool.Context, input map[string]any) (any, error) {
 	action, _ := input["action"].(string)
 	if action == "" {
 		return map[string]any{
-			"schema":           true,
-			"tool":             "unsorted",
-			"error":            "поле action обязательно",
+			"schema":            true,
+			"tool":              "unsorted",
+			"error":             "поле action обязательно",
 			"available_actions": []string{"list", "get", "accept", "decline", "link", "summary", "create"},
 		}, nil
 	}
@@ -212,11 +313,11 @@ func (r *Registry) handleUnsortedShadow(ctx context.Context, input map[string]an
 
 	// Определяем режим: schema если хотя бы одно обязательное поле отсутствует.
 	if isSchemaMode(input, required) {
-		return r.unsortedSchemaResponse(action), nil
+		return t.unsortedSchemaResponse(action), nil
 	}
 
 	// Execute mode: json roundtrip map → UnsortedInput.
-	return r.executeUnsorted(ctx, input, action)
+	return t.executeUnsorted(ctx, input, action)
 }
 
 // isSchemaMode возвращает true если хотя бы одно обязательное поле отсутствует или пустое.
@@ -235,7 +336,7 @@ func isSchemaMode(input map[string]any, required []string) bool {
 }
 
 // unsortedSchemaResponse строит ответ со схемой и available_values из сервиса.
-func (r *Registry) unsortedSchemaResponse(action string) map[string]any {
+func (t *UnsortedTool) unsortedSchemaResponse(action string) map[string]any {
 	schema, ok := unsortedSchemas[action]
 	if !ok {
 		schema = map[string]any{"description": "Схема для action " + action + " не найдена"}
@@ -251,16 +352,16 @@ func (r *Registry) unsortedSchemaResponse(action string) map[string]any {
 	}
 
 	resp["available_values"] = map[string]any{
-		"pipelines": r.unsortedService.PipelineNames(),
-		"statuses":  r.unsortedService.StatusNames(),
-		"users":     r.unsortedService.UserNames(),
+		"pipelines": t.service.PipelineNames(),
+		"statuses":  t.service.StatusNames(),
+		"users":     t.service.UserNames(),
 	}
 
 	return resp
 }
 
 // executeUnsorted выполняет действие: json roundtrip map → UnsortedInput → handleUnsorted.
-func (r *Registry) executeUnsorted(ctx context.Context, input map[string]any, action string) (any, error) {
+func (t *UnsortedTool) executeUnsorted(ctx tool.Context, input map[string]any, action string) (any, error) {
 	// Для "link" поле lead_id находится на верхнем уровне, но UnsortedInput ожидает link_data.lead_id.
 	// Нормализуем: если есть lead_id на верхнем уровне — оборачиваем в link_data.
 	if action == "link" {
@@ -294,41 +395,60 @@ func (r *Registry) executeUnsorted(ctx context.Context, input map[string]any, ac
 	if err := json.Unmarshal(data, &typed); err != nil {
 		return nil, fmt.Errorf("unsorted: unmarshal input: %w", err)
 	}
-	return r.handleUnsorted(ctx, typed)
+	return t.handleUnsorted(ctx, typed)
 }
 
-func (r *Registry) handleUnsorted(ctx context.Context, input gkitmodels.UnsortedInput) (any, error) {
+func (t *UnsortedTool) handleUnsorted(ctx tool.Context, input gkitmodels.UnsortedInput) (any, error) {
 	switch input.Action {
 	case "list":
-		return r.unsortedService.ListUnsorted(ctx, input.Filter)
+		return t.service.ListUnsorted(ctx, input.Filter)
 	case "get":
 		if input.UID == "" {
 			return nil, fmt.Errorf("uid is required for action 'get'")
 		}
-		return r.unsortedService.GetUnsorted(ctx, input.UID)
+		return t.service.GetUnsorted(ctx, input.UID)
 	case "create":
 		if input.CreateData == nil || input.CreateData.Category == "" || len(input.CreateData.Items) == 0 {
 			return nil, fmt.Errorf("create_data with category and items is required for action 'create'")
 		}
-		return r.unsortedService.CreateUnsorted(ctx, input.CreateData.Category, input.CreateData.Items)
+		return t.service.CreateUnsorted(ctx, input.CreateData.Category, input.CreateData.Items)
 	case "accept":
 		if input.UID == "" {
 			return nil, fmt.Errorf("uid is required for action 'accept'")
 		}
-		return r.unsortedService.AcceptUnsorted(ctx, input.UID, input.AcceptParams)
+		return t.service.AcceptUnsorted(ctx, input.UID, input.AcceptParams)
 	case "decline":
 		if input.UID == "" {
 			return nil, fmt.Errorf("uid is required for action 'decline'")
 		}
-		return r.unsortedService.DeclineUnsorted(ctx, input.UID, input.DeclineParams)
+		return t.service.DeclineUnsorted(ctx, input.UID, input.DeclineParams)
 	case "link":
 		if input.UID == "" || input.LinkData == nil || input.LinkData.LeadID == 0 {
 			return nil, fmt.Errorf("uid and link_data.lead_id are required for action 'link'")
 		}
-		return r.unsortedService.LinkUnsorted(ctx, input.UID, input.LinkData.LeadID)
+		return t.service.LinkUnsorted(ctx, input.UID, input.LinkData.LeadID)
 	case "summary":
-		return r.unsortedService.SummaryUnsorted(ctx, input.Filter)
+		return t.service.SummaryUnsorted(ctx, input.Filter)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", input.Action)
 	}
+}
+
+// toResultMap converts any value to map[string]any for ADK Run() return.
+func toResultMap(v any) (map[string]any, error) {
+	if v == nil {
+		return map[string]any{"result": "ok"}, nil
+	}
+	if m, ok := v.(map[string]any); ok {
+		return m, nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return map[string]any{"result": json.RawMessage(data)}, nil
+	}
+	return result, nil
 }

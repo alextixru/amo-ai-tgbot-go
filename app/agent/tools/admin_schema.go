@@ -7,11 +7,194 @@ import (
 	"net/url"
 	"strings"
 
-	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
+
+	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
+	"github.com/tihn/amo-ai-tgbot-go/internal/services/crm/admin_schema"
 )
+
+// AdminSchemaTool — нативный ADK tool для управления схемой данных CRM.
+type AdminSchemaTool struct {
+	service admin_schema.Service
+}
+
+// NewAdminSchemaTool создаёт новый экземпляр AdminSchemaTool.
+func NewAdminSchemaTool(service admin_schema.Service) *AdminSchemaTool {
+	return &AdminSchemaTool{service: service}
+}
+
+// Name реализует tool.Tool.
+func (t *AdminSchemaTool) Name() string {
+	return "admin_schema"
+}
+
+// Description реализует tool.Tool.
+func (t *AdminSchemaTool) Description() string {
+	return "Управление схемой данных CRM: кастомные поля, группы полей, причины отказа, источники сделок. " +
+		"Layers: custom_fields, field_groups, loss_reasons, sources. " +
+		"Вызови с layer + action чтобы получить схему параметров."
+}
+
+// IsLongRunning реализует tool.Tool.
+func (t *AdminSchemaTool) IsLongRunning() bool {
+	return false
+}
+
+// Declaration реализует toolinternal.FunctionTool (duck typing).
+func (t *AdminSchemaTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"layer": {
+					Type:        genai.TypeString,
+					Description: "Слой схемы: custom_fields, field_groups, loss_reasons, sources",
+					Enum:        []string{"custom_fields", "field_groups", "loss_reasons", "sources"},
+				},
+				"action": {
+					Type:        genai.TypeString,
+					Description: "Действие: list, get, create, update, delete",
+					Enum:        []string{"list", "get", "create", "update", "delete"},
+				},
+				"entity_type": {
+					Type:        genai.TypeString,
+					Description: "Тип сущности (для custom_fields и field_groups): leads, contacts, companies, customers",
+				},
+				"id": {
+					Type:        genai.TypeInteger,
+					Description: "ID ресурса (для get/delete)",
+				},
+				"group_id": {
+					Type:        genai.TypeString,
+					Description: "ID группы полей (строковый, для field_groups get/delete)",
+				},
+				"filter": {
+					Type:        genai.TypeObject,
+					Description: "Фильтры для list-запросов",
+				},
+				"custom_field": {
+					Type:        genai.TypeObject,
+					Description: "Одиночное кастомное поле для create/update",
+				},
+				"custom_fields": {
+					Type:        genai.TypeArray,
+					Description: "Батч кастомных полей для create/update",
+					Items:       &genai.Schema{Type: genai.TypeObject},
+				},
+				"field_group": {
+					Type:        genai.TypeObject,
+					Description: "Одиночная группа полей для create/update",
+				},
+				"field_groups": {
+					Type:        genai.TypeArray,
+					Description: "Батч групп полей для create/update",
+					Items:       &genai.Schema{Type: genai.TypeObject},
+				},
+				"loss_reason": {
+					Type:        genai.TypeObject,
+					Description: "Одиночная причина отказа для create",
+				},
+				"loss_reasons": {
+					Type:        genai.TypeArray,
+					Description: "Батч причин отказа для create",
+					Items:       &genai.Schema{Type: genai.TypeObject},
+				},
+				"source": {
+					Type:        genai.TypeObject,
+					Description: "Одиночный источник для create/update",
+				},
+				"sources": {
+					Type:        genai.TypeArray,
+					Description: "Батч источников для create/update",
+					Items:       &genai.Schema{Type: genai.TypeObject},
+				},
+			},
+			Required: []string{"layer", "action"},
+		},
+	}
+}
+
+// Run реализует toolinternal.FunctionTool (duck typing).
+func (t *AdminSchemaTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	input, ok := args.(map[string]any)
+	if !ok {
+		// Попытка через JSON roundtrip
+		b, err := json.Marshal(args)
+		if err != nil {
+			return nil, fmt.Errorf("не удалось сериализовать input: %w", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, fmt.Errorf("не удалось разобрать input как map: %w", err)
+		}
+		input = m
+	}
+
+	layer, _ := input["layer"].(string)
+	action, _ := input["action"].(string)
+
+	if layer == "" || action == "" {
+		return map[string]any{
+			"schema":      true,
+			"tool":        "admin_schema",
+			"description": "Управление схемой данных CRM. Укажи layer и action для получения полной схемы.",
+			"layers": map[string]any{
+				"custom_fields": "Кастомные поля сущностей. Actions: list, get, create, update, delete",
+				"field_groups":  "Группы кастомных полей. Actions: list, get, create, update, delete",
+				"loss_reasons":  "Причины отказа (проигрыша). Actions: list, get, create, delete",
+				"sources":       "Источники сделок. Actions: list, get, create, update, delete",
+			},
+			"usage": "Вызови с layer + action, например: {\"layer\": \"custom_fields\", \"action\": \"list\"}",
+		}, nil
+	}
+
+	// Schema mode: обязательные поля отсутствуют
+	if adminSchemaIsSchemaMode(input, layer, action) {
+		layerSchemas, ok := adminSchemaSchemas[layer]
+		if !ok {
+			return nil, fmt.Errorf("неизвестный layer: %s. Доступные: custom_fields, field_groups, loss_reasons, sources", layer)
+		}
+		schema, ok := layerSchemas[action]
+		if !ok {
+			return nil, fmt.Errorf("неизвестный action %q для layer %q", action, layer)
+		}
+		return toResultMap(schema)
+	}
+
+	// Execute mode: JSON roundtrip в AdminSchemaInput
+	b, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось сериализовать input: %w", err)
+	}
+	var typed gkitmodels.AdminSchemaInput
+	if err := json.Unmarshal(b, &typed); err != nil {
+		return nil, fmt.Errorf("не удалось разобрать input как AdminSchemaInput: %w", err)
+	}
+
+	var result any
+	switch typed.Layer {
+	case "custom_fields":
+		result, err = t.handleCustomFields(ctx, typed)
+	case "field_groups":
+		result, err = t.handleFieldGroups(ctx, typed)
+	case "loss_reasons":
+		result, err = t.handleLossReasons(ctx, typed)
+	case "sources":
+		result, err = t.handleSources(ctx, typed)
+	default:
+		return nil, fmt.Errorf("unknown layer: %s", typed.Layer)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toResultMap(result)
+}
 
 // adminSchemaRequiredFields определяет обязательные поля для каждой комбинации layer+action.
 // Если все перечисленные поля отсутствуют в input — возвращаем схему.
@@ -346,84 +529,6 @@ func adminSchemaIsSchemaMode(input map[string]any, layer, action string) bool {
 	return false
 }
 
-func (r *Registry) RegisterAdminSchemaTool() {
-	r.addTool(ToolDefinition{
-		Name: "admin_schema",
-		Description: "Управление схемой данных CRM: кастомные поля, группы полей, причины отказа, источники сделок. " +
-			"Layers: custom_fields, field_groups, loss_reasons, sources. " +
-			"Вызови с layer + action чтобы получить схему параметров.",
-		Handler: func(ctx context.Context, rawInput any) (any, error) {
-			input, ok := rawInput.(map[string]any)
-			if !ok {
-				// Попытка через JSON roundtrip
-				b, err := json.Marshal(rawInput)
-				if err != nil {
-					return nil, fmt.Errorf("не удалось сериализовать input: %w", err)
-				}
-				var m map[string]any
-				if err := json.Unmarshal(b, &m); err != nil {
-					return nil, fmt.Errorf("не удалось разобрать input как map: %w", err)
-				}
-				input = m
-			}
-
-			layer, _ := input["layer"].(string)
-			action, _ := input["action"].(string)
-
-			if layer == "" || action == "" {
-				return map[string]any{
-					"schema":      true,
-					"tool":        "admin_schema",
-					"description": "Управление схемой данных CRM. Укажи layer и action для получения полной схемы.",
-					"layers": map[string]any{
-						"custom_fields": "Кастомные поля сущностей. Actions: list, get, create, update, delete",
-						"field_groups":  "Группы кастомных полей. Actions: list, get, create, update, delete",
-						"loss_reasons":  "Причины отказа (проигрыша). Actions: list, get, create, delete",
-						"sources":       "Источники сделок. Actions: list, get, create, update, delete",
-					},
-					"usage": "Вызови с layer + action, например: {\"layer\": \"custom_fields\", \"action\": \"list\"}",
-				}, nil
-			}
-
-			// Schema mode: обязательные поля отсутствуют
-			if adminSchemaIsSchemaMode(input, layer, action) {
-				layerSchemas, ok := adminSchemaSchemas[layer]
-				if !ok {
-					return nil, fmt.Errorf("неизвестный layer: %s. Доступные: custom_fields, field_groups, loss_reasons, sources", layer)
-				}
-				schema, ok := layerSchemas[action]
-				if !ok {
-					return nil, fmt.Errorf("неизвестный action %q для layer %q", action, layer)
-				}
-				return schema, nil
-			}
-
-			// Execute mode: JSON roundtrip в AdminSchemaInput
-			b, err := json.Marshal(input)
-			if err != nil {
-				return nil, fmt.Errorf("не удалось сериализовать input: %w", err)
-			}
-			var typed gkitmodels.AdminSchemaInput
-			if err := json.Unmarshal(b, &typed); err != nil {
-				return nil, fmt.Errorf("не удалось разобрать input как AdminSchemaInput: %w", err)
-			}
-
-			switch typed.Layer {
-			case "custom_fields":
-				return r.handleCustomFields(ctx, typed)
-			case "field_groups":
-				return r.handleFieldGroups(ctx, typed)
-			case "loss_reasons":
-				return r.handleLossReasons(ctx, typed)
-			case "sources":
-				return r.handleSources(ctx, typed)
-			default:
-				return nil, fmt.Errorf("unknown layer: %s", typed.Layer)
-			}
-		},
-	})
-}
-
 func buildCustomFieldsFilter(f *gkitmodels.SchemaFilter) *filters.CustomFieldsFilter {
 	if f == nil {
 		return nil
@@ -542,14 +647,14 @@ func sourceDataToModel(d gkitmodels.SourceData) *amomodels.Source {
 	}
 }
 
-func (r *Registry) handleCustomFields(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
+func (t *AdminSchemaTool) handleCustomFields(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
 	if input.EntityType == "" {
 		return nil, fmt.Errorf("entity_type is required for custom_fields")
 	}
 	switch input.Action {
 	case "list":
 		filter := buildCustomFieldsFilter(input.Filter)
-		result, err := r.adminSchemaService.ListCustomFields(ctx, input.EntityType, filter)
+		result, err := t.service.ListCustomFields(ctx, input.EntityType, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -565,27 +670,27 @@ func (r *Registry) handleCustomFields(ctx context.Context, input gkitmodels.Admi
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")
 		}
-		return r.adminSchemaService.GetCustomField(ctx, input.EntityType, input.ID)
+		return t.service.GetCustomField(ctx, input.EntityType, input.ID)
 
 	case "create":
 		fields := collectCustomFields(input)
 		if len(fields) == 0 {
 			return nil, fmt.Errorf("custom_field or custom_fields is required for create")
 		}
-		return r.adminSchemaService.CreateCustomFields(ctx, input.EntityType, fields)
+		return t.service.CreateCustomFields(ctx, input.EntityType, fields)
 
 	case "update":
 		fields := collectCustomFields(input)
 		if len(fields) == 0 {
 			return nil, fmt.Errorf("custom_field or custom_fields is required for update")
 		}
-		return r.adminSchemaService.UpdateCustomFields(ctx, input.EntityType, fields)
+		return t.service.UpdateCustomFields(ctx, input.EntityType, fields)
 
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete")
 		}
-		return r.adminSchemaService.DeleteCustomField(ctx, input.EntityType, input.ID)
+		return t.service.DeleteCustomField(ctx, input.EntityType, input.ID)
 
 	default:
 		return nil, fmt.Errorf("unknown action for custom_fields: %s", input.Action)
@@ -604,14 +709,14 @@ func collectCustomFields(input gkitmodels.AdminSchemaInput) []*amomodels.CustomF
 	return fields
 }
 
-func (r *Registry) handleFieldGroups(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
+func (t *AdminSchemaTool) handleFieldGroups(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
 	if input.EntityType == "" {
 		return nil, fmt.Errorf("entity_type is required for field_groups")
 	}
 	switch input.Action {
 	case "list":
 		filter := buildBaseFilter(input.Filter)
-		result, err := r.adminSchemaService.ListFieldGroups(ctx, input.EntityType, filter)
+		result, err := t.service.ListFieldGroups(ctx, input.EntityType, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -627,27 +732,27 @@ func (r *Registry) handleFieldGroups(ctx context.Context, input gkitmodels.Admin
 		if input.GroupID == "" {
 			return nil, fmt.Errorf("group_id is required for get")
 		}
-		return r.adminSchemaService.GetFieldGroup(ctx, input.EntityType, input.GroupID)
+		return t.service.GetFieldGroup(ctx, input.EntityType, input.GroupID)
 
 	case "create":
 		groups := collectFieldGroups(input)
 		if len(groups) == 0 {
 			return nil, fmt.Errorf("field_group or field_groups is required for create")
 		}
-		return r.adminSchemaService.CreateFieldGroups(ctx, input.EntityType, groups)
+		return t.service.CreateFieldGroups(ctx, input.EntityType, groups)
 
 	case "update":
 		groups := collectFieldGroups(input)
 		if len(groups) == 0 {
 			return nil, fmt.Errorf("field_group or field_groups is required for update")
 		}
-		return r.adminSchemaService.UpdateFieldGroups(ctx, input.EntityType, groups)
+		return t.service.UpdateFieldGroups(ctx, input.EntityType, groups)
 
 	case "delete":
 		if input.GroupID == "" {
 			return nil, fmt.Errorf("group_id is required for delete")
 		}
-		return r.adminSchemaService.DeleteFieldGroup(ctx, input.EntityType, input.GroupID)
+		return t.service.DeleteFieldGroup(ctx, input.EntityType, input.GroupID)
 
 	default:
 		return nil, fmt.Errorf("unknown action for field_groups: %s", input.Action)
@@ -666,11 +771,11 @@ func collectFieldGroups(input gkitmodels.AdminSchemaInput) []amomodels.CustomFie
 	return groups
 }
 
-func (r *Registry) handleLossReasons(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
+func (t *AdminSchemaTool) handleLossReasons(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
 	switch input.Action {
 	case "list":
 		filter := buildBaseFilter(input.Filter)
-		result, err := r.adminSchemaService.ListLossReasons(ctx, filter)
+		result, err := t.service.ListLossReasons(ctx, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -686,20 +791,20 @@ func (r *Registry) handleLossReasons(ctx context.Context, input gkitmodels.Admin
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")
 		}
-		return r.adminSchemaService.GetLossReason(ctx, input.ID)
+		return t.service.GetLossReason(ctx, input.ID)
 
 	case "create":
 		reasons := collectLossReasons(input)
 		if len(reasons) == 0 {
 			return nil, fmt.Errorf("loss_reason or loss_reasons is required for create")
 		}
-		return r.adminSchemaService.CreateLossReasons(ctx, reasons)
+		return t.service.CreateLossReasons(ctx, reasons)
 
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete")
 		}
-		return r.adminSchemaService.DeleteLossReason(ctx, input.ID)
+		return t.service.DeleteLossReason(ctx, input.ID)
 
 	default:
 		return nil, fmt.Errorf("unknown action for loss_reasons: %s", input.Action)
@@ -718,11 +823,11 @@ func collectLossReasons(input gkitmodels.AdminSchemaInput) []*amomodels.LossReas
 	return reasons
 }
 
-func (r *Registry) handleSources(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
+func (t *AdminSchemaTool) handleSources(ctx context.Context, input gkitmodels.AdminSchemaInput) (any, error) {
 	switch input.Action {
 	case "list":
 		filter := buildSourcesFilter(input.Filter)
-		result, err := r.adminSchemaService.ListSources(ctx, filter)
+		result, err := t.service.ListSources(ctx, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -738,27 +843,27 @@ func (r *Registry) handleSources(ctx context.Context, input gkitmodels.AdminSche
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get")
 		}
-		return r.adminSchemaService.GetSource(ctx, input.ID)
+		return t.service.GetSource(ctx, input.ID)
 
 	case "create":
 		sources := collectSources(input)
 		if len(sources) == 0 {
 			return nil, fmt.Errorf("source or sources is required for create")
 		}
-		return r.adminSchemaService.CreateSources(ctx, sources)
+		return t.service.CreateSources(ctx, sources)
 
 	case "update":
 		sources := collectSources(input)
 		if len(sources) == 0 {
 			return nil, fmt.Errorf("source or sources is required for update")
 		}
-		return r.adminSchemaService.UpdateSources(ctx, sources)
+		return t.service.UpdateSources(ctx, sources)
 
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete")
 		}
-		return r.adminSchemaService.DeleteSource(ctx, input.ID)
+		return t.service.DeleteSource(ctx, input.ID)
 
 	default:
 		return nil, fmt.Errorf("unknown action for sources: %s", input.Action)
