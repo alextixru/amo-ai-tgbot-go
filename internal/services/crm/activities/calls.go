@@ -7,9 +7,27 @@ import (
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
-// ============ CALLS ============
+func (s *service) convertCall(c *models.Call) *CallOutput {
+	if c == nil {
+		return nil
+	}
+	return &CallOutput{
+		ID:                  c.ID,
+		Direction:           string(c.Direction),
+		Duration:            c.Duration,
+		Phone:               c.Phone,
+		CallResult:          c.CallResult,
+		CallStatus:          int(c.CallStatus),
+		Source:              c.Source,
+		UniqueID:            c.Uniq,
+		RecordURL:           c.Link,
+		ResponsibleUserName: s.resolveUserID(c.ResponsibleUserID),
+		CreatedByName:       s.resolveUserID(c.CreatedBy),
+		CreatedAt:           toISO(c.CreatedAt),
+	}
+}
 
-func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.CallData) (*models.Call, error) {
+func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity, data *gkitmodels.CallData) (*CallOutput, error) {
 	call := models.Call{
 		EntityID:   parent.ID,
 		EntityType: parent.Type,
@@ -28,5 +46,9 @@ func (s *service) CreateCall(ctx context.Context, parent gkitmodels.ParentEntity
 	if data.RecordURL != "" {
 		call.Link = data.RecordURL
 	}
-	return s.sdk.Calls().CreateOne(ctx, &call)
+	c, err := s.sdk.Calls().CreateOne(ctx, &call)
+	if err != nil {
+		return nil, err
+	}
+	return s.convertCall(c), nil
 }

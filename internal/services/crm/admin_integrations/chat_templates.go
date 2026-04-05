@@ -2,6 +2,7 @@ package admin_integrations
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
@@ -10,6 +11,28 @@ import (
 func (s *service) ListChatTemplates(ctx context.Context, filter *filters.TemplatesFilter) ([]*models.ChatTemplate, error) {
 	templates, _, err := s.sdk.ChatTemplates().Get(ctx, filter)
 	return templates, err
+}
+
+func (s *service) CreateChatTemplate(ctx context.Context, tmpl *models.ChatTemplate) (*models.ChatTemplate, error) {
+	results, _, err := s.sdk.ChatTemplates().Create(ctx, []*models.ChatTemplate{tmpl})
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no chat template returned after creation")
+	}
+	return results[0], nil
+}
+
+func (s *service) UpdateChatTemplate(ctx context.Context, tmpl *models.ChatTemplate) (*models.ChatTemplate, error) {
+	results, _, err := s.sdk.ChatTemplates().Update(ctx, []*models.ChatTemplate{tmpl})
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no chat template returned after update")
+	}
+	return results[0], nil
 }
 
 func (s *service) DeleteChatTemplate(ctx context.Context, id int) error {

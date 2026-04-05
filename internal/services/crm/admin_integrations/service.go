@@ -31,6 +31,8 @@ type Service interface {
 
 	// Chat Templates
 	ListChatTemplates(ctx context.Context, filter *filters.TemplatesFilter) ([]*models.ChatTemplate, error)
+	CreateChatTemplate(ctx context.Context, tmpl *models.ChatTemplate) (*models.ChatTemplate, error)
+	UpdateChatTemplate(ctx context.Context, tmpl *models.ChatTemplate) (*models.ChatTemplate, error)
 	DeleteChatTemplate(ctx context.Context, id int) error
 	DeleteChatTemplates(ctx context.Context, ids []int) error
 	SendChatTemplateOnReview(ctx context.Context, id int) ([]models.ChatTemplateReview, error)
@@ -38,8 +40,8 @@ type Service interface {
 
 	// Short Links
 	ListShortLinks(ctx context.Context, filter *filters.ShortLinksFilter) ([]models.ShortLink, error)
-	CreateShortLink(ctx context.Context, url string) (models.ShortLink, error)
-	CreateShortLinks(ctx context.Context, urls []string) ([]models.ShortLink, error)
+	CreateShortLink(ctx context.Context, link models.ShortLink) (models.ShortLink, error)
+	CreateShortLinks(ctx context.Context, links []models.ShortLink) ([]models.ShortLink, error)
 	DeleteShortLink(ctx context.Context, id int) error
 }
 

@@ -49,6 +49,7 @@ func DefineChatFlow(
 				ai.WithModelName(model.Name()),
 				ai.WithMessages(history...),
 				ai.WithTools(tools...),
+				ai.WithMaxTurns(10),
 			)
 			if err != nil {
 				return ChatOutput{}, fmt.Errorf("generate: %w", err)

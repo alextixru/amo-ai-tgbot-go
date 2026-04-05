@@ -8,6 +8,9 @@ type ProductsInput struct {
 	// ProductID ID товара (для get, update)
 	ProductID int `json:"product_id,omitempty" jsonschema_description:"ID товара (для get, update)"`
 
+	// With дополнительные данные: invoice_link, supplier_field_values
+	With []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные: invoice_link, supplier_field_values"`
+
 	// Filter параметры поиска
 	Filter *ProductFilter `json:"filter,omitempty" jsonschema_description:"Фильтры поиска (для search)"`
 
@@ -37,20 +40,32 @@ type EntityReference struct {
 type ProductLinkData struct {
 	ID       int `json:"id" jsonschema_description:"ID товара"`
 	Quantity int `json:"quantity,omitempty" jsonschema_description:"Количество"`
-	PriceID  int `json:"price_id,omitempty" jsonschema_description:"ID цены"`
+	// PriceID ID цены; если не передан (0), используется первое ценовое поле каталога
+	PriceID int `json:"price_id,omitempty" jsonschema_description:"ID цены (опционально — по умолчанию первое ценовое поле каталога)"`
 }
 
 // ProductFilter фильтры поиска товаров
 type ProductFilter struct {
-	Query string   `json:"query,omitempty" jsonschema_description:"Поисковый запрос"`
-	Limit int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50, макс 250)"`
-	Page  int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	IDs   []int    `json:"ids,omitempty" jsonschema_description:"Фильтр по массиву ID товаров"`
-	With  []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные для get: invoice_link, supplier_field_values"`
+	Query string `json:"query,omitempty" jsonschema_description:"Поисковый запрос"`
+	Limit int    `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50, макс 250)"`
+	Page  int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	IDs   []int  `json:"ids,omitempty" jsonschema_description:"Фильтр по массиву ID товаров"`
+}
+
+// ProductFieldInput значение кастомного поля товара по коду поля
+type ProductFieldInput struct {
+	// FieldCode код поля (например: SKU, PRICE, DESCRIPTION)
+	FieldCode string `json:"field_code" jsonschema_description:"Код кастомного поля (например SKU, PRICE)"`
+	// Value значение поля
+	Value string `json:"value" jsonschema_description:"Значение поля"`
 }
 
 // ProductData данные товара
 type ProductData struct {
-	Name               string         `json:"name,omitempty" jsonschema_description:"Название товара"`
-	CustomFieldsValues map[string]any `json:"custom_fields_values,omitempty" jsonschema_description:"Значения кастомных полей (SKU, цена, описание и др.) в формате SDK"`
+	// ID идентификатор товара (обязателен для batch update)
+	ID int `json:"id,omitempty" jsonschema_description:"ID товара (для batch update)"`
+	// Name название товара
+	Name string `json:"name,omitempty" jsonschema_description:"Название товара"`
+	// Fields значения кастомных полей по кодам (SKU, PRICE и др.)
+	Fields []ProductFieldInput `json:"fields,omitempty" jsonschema_description:"Значения кастомных полей (по коду поля: SKU, PRICE и др.)"`
 }

@@ -6,107 +6,399 @@ import (
 
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 
-	amomodels "github.com/alextixru/amocrm-sdk-go/core/models"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
 )
 
+// adminPipelinesSchema возвращает полную схему параметров для заданного action.
+// Используется в Schema-режиме Shadow Tool.
+func adminPipelinesSchema(action string) (any, error) {
+	type fieldDesc struct {
+		Type        string `json:"type"`
+		Description string `json:"description"`
+		Required    bool   `json:"required"`
+	}
+
+	type schemaResponse struct {
+		Schema         bool                 `json:"schema"`
+		Tool           string               `json:"tool"`
+		Action         string               `json:"action"`
+		Description    string               `json:"description"`
+		RequiredFields map[string]fieldDesc `json:"required_fields"`
+		OptionalFields map[string]fieldDesc `json:"optional_fields,omitempty"`
+		Notes          []string             `json:"notes,omitempty"`
+		Example        map[string]any       `json:"example"`
+	}
+
+	base := schemaResponse{
+		Schema: true,
+		Tool:   "admin_pipelines",
+		Action: action,
+	}
+
+	switch action {
+
+	case "search", "list":
+		base.Description = "Получить список всех воронок. Не требует обязательных параметров."
+		base.RequiredFields = map[string]fieldDesc{}
+		base.OptionalFields = map[string]fieldDesc{
+			"with_statuses": {Type: "boolean", Description: "Включить статусы каждой воронки в ответ (один запрос)"},
+		}
+		base.Example = map[string]any{
+			"action":        "search",
+			"with_statuses": true,
+		}
+
+	case "get":
+		base.Description = "Получить воронку по ID или имени."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Одно из двух: числовой ID или точное имя воронки", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки (используется если pipeline_id не задан)"},
+			"with_statuses": {Type: "boolean", Description: "Включить статусы воронки в ответ"},
+		}
+		base.Notes = []string{"Укажите pipeline_id или pipeline_name — хотя бы одно"}
+		base.Example = map[string]any{
+			"action":        "get",
+			"pipeline_name": "Продажи",
+			"with_statuses": true,
+		}
+
+	case "create":
+		base.Description = "Создать одну или несколько воронок."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline OR items": {Type: "object | array", Description: "Данные воронки (одна) или массив воронок (батч)", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline": {Type: "object", Description: "Данные одной воронки: {name, sort, is_main, is_unsorted_on}"},
+			"items":    {Type: "array", Description: "Массив PipelineData для батч-создания: [{name, sort, is_main, is_unsorted_on}, ...]"},
+		}
+		base.Notes = []string{
+			"pipeline.name — обязательное поле внутри pipeline",
+			"items[].name — обязательное поле каждого элемента",
+		}
+		base.Example = map[string]any{
+			"action": "create",
+			"pipeline": map[string]any{
+				"name":           "Новая воронка",
+				"sort":           100,
+				"is_unsorted_on": true,
+			},
+		}
+
+	case "update":
+		base.Description = "Обновить воронку по ID или имени."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки для обновления", Required: true},
+			"pipeline":                     {Type: "object", Description: "Данные для обновления: {name, sort, is_main, is_unsorted_on}", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки (используется если pipeline_id не задан)"},
+		}
+		base.Notes = []string{"Укажите pipeline_id или pipeline_name — хотя бы одно"}
+		base.Example = map[string]any{
+			"action":        "update",
+			"pipeline_name": "Старое название",
+			"pipeline": map[string]any{
+				"name": "Новое название",
+				"sort": 200,
+			},
+		}
+
+	case "delete":
+		base.Description = "Удалить воронку по ID или имени."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки для удаления", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+		}
+		base.Notes = []string{"Укажите pipeline_id или pipeline_name — хотя бы одно"}
+		base.Example = map[string]any{
+			"action":        "delete",
+			"pipeline_name": "Устаревшая воронка",
+		}
+
+	case "get_statuses", "list_statuses":
+		base.Description = "Получить список статусов воронки."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+		}
+		base.Notes = []string{"Укажите pipeline_id или pipeline_name — хотя бы одно"}
+		base.Example = map[string]any{
+			"action":        "get_statuses",
+			"pipeline_name": "Продажи",
+		}
+
+	case "get_status":
+		base.Description = "Получить статус воронки по ID или имени."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки", Required: true},
+			"status_id OR status_name":     {Type: "int | string", Description: "Идентификатор статуса", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+			"status_id":     {Type: "integer", Description: "Числовой ID статуса"},
+			"status_name":   {Type: "string", Description: "Имя статуса"},
+		}
+		base.Notes = []string{
+			"Укажите pipeline_id или pipeline_name — хотя бы одно",
+			"Укажите status_id или status_name — хотя бы одно",
+		}
+		base.Example = map[string]any{
+			"action":        "get_status",
+			"pipeline_name": "Продажи",
+			"status_name":   "В работе",
+		}
+
+	case "create_status":
+		base.Description = "Создать один или несколько статусов в воронке."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки", Required: true},
+			"status OR items":              {Type: "object | array", Description: "Данные статуса или массив статусов", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+			"status": {Type: "object", Description: "Данные одного статуса: {name (обязательное), sort, color, type}. " +
+				"type: regular | won | lost. " +
+				"color (hex): #fffeb2 #fffd7f #fff000 #ffeab2 #ffdc7f #ffce5a #ffdbdb #ffc8c8 #ff8f92 " +
+				"#d6eaff #c1e0ff #98cbff #ebffb1 #deff81 #87f2c0 #f9deff #f3beff #ccc8f9 #eb93ff #f2f3f4 #e6e8ea"},
+			"items": {Type: "array", Description: "Массив StatusData для батч-создания: [{name, sort, color, type}, ...]"},
+		}
+		base.Example = map[string]any{
+			"action":        "create_status",
+			"pipeline_name": "Продажи",
+			"status": map[string]any{
+				"name":  "Переговоры",
+				"color": "#d6eaff",
+				"type":  "regular",
+			},
+		}
+
+	case "update_status":
+		base.Description = "Обновить статус воронки."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки", Required: true},
+			"status_id OR status_name":     {Type: "int | string", Description: "Идентификатор статуса", Required: true},
+			"status":                       {Type: "object", Description: "Данные для обновления статуса: {name, sort, color, type}", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+			"status_id":     {Type: "integer", Description: "Числовой ID статуса"},
+			"status_name":   {Type: "string", Description: "Имя статуса"},
+		}
+		base.Notes = []string{
+			"Укажите pipeline_id или pipeline_name — хотя бы одно",
+			"Укажите status_id или status_name — хотя бы одно",
+		}
+		base.Example = map[string]any{
+			"action":        "update_status",
+			"pipeline_name": "Продажи",
+			"status_name":   "Переговоры",
+			"status": map[string]any{
+				"name":  "Активные переговоры",
+				"color": "#87f2c0",
+			},
+		}
+
+	case "delete_status":
+		base.Description = "Удалить статус воронки."
+		base.RequiredFields = map[string]fieldDesc{
+			"pipeline_id OR pipeline_name": {Type: "int | string", Description: "Идентификатор воронки", Required: true},
+			"status_id OR status_name":     {Type: "int | string", Description: "Идентификатор статуса", Required: true},
+		}
+		base.OptionalFields = map[string]fieldDesc{
+			"pipeline_id":   {Type: "integer", Description: "Числовой ID воронки"},
+			"pipeline_name": {Type: "string", Description: "Имя воронки"},
+			"status_id":     {Type: "integer", Description: "Числовой ID статуса"},
+			"status_name":   {Type: "string", Description: "Имя статуса"},
+		}
+		base.Notes = []string{
+			"Укажите pipeline_id или pipeline_name — хотя бы одно",
+			"Укажите status_id или status_name — хотя бы одно",
+		}
+		base.Example = map[string]any{
+			"action":        "delete_status",
+			"pipeline_name": "Продажи",
+			"status_name":   "Устаревший статус",
+		}
+
+	default:
+		return nil, fmt.Errorf("неизвестное действие: %s. Доступные: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status", action)
+	}
+
+	return base, nil
+}
+
+// adminPipelinesIsSchemaMode определяет, находится ли вызов в Schema-режиме.
+// Возвращает true если пришёл только action без обязательных полей для данного action.
+func adminPipelinesIsSchemaMode(action string, raw map[string]any) bool {
+	hasPipeline := raw["pipeline_id"] != nil && raw["pipeline_id"] != float64(0) ||
+		raw["pipeline_name"] != nil && raw["pipeline_name"] != ""
+	hasStatus := raw["status_id"] != nil && raw["status_id"] != float64(0) ||
+		raw["status_name"] != nil && raw["status_name"] != ""
+	hasPipelineData := raw["pipeline"] != nil
+	hasStatusData := raw["status"] != nil
+	hasItems := raw["items"] != nil
+
+	switch action {
+	case "search", "list":
+		// Не требует обязательных полей — всегда execute
+		return false
+
+	case "get":
+		return !hasPipeline
+
+	case "create":
+		return !hasPipelineData && !hasItems
+
+	case "update":
+		return !hasPipeline || !hasPipelineData
+
+	case "delete":
+		return !hasPipeline
+
+	case "get_statuses", "list_statuses":
+		return !hasPipeline
+
+	case "get_status":
+		return !hasPipeline || !hasStatus
+
+	case "create_status":
+		return !hasPipeline || (!hasStatusData && !hasItems)
+
+	case "update_status":
+		return !hasPipeline || !hasStatus || !hasStatusData
+
+	case "delete_status":
+		return !hasPipeline || !hasStatus
+
+	default:
+		return false
+	}
+}
+
 func (r *Registry) RegisterAdminPipelinesTool() {
-	r.addTool(genkit.DefineTool[gkitmodels.AdminPipelinesInput, any](
+	r.addTool(genkit.DefineTool[map[string]any, any](
 		r.g,
 		"admin_pipelines",
-		"Управление воронками (pipelines) и статусами. Действия: list/get/create/update/delete для воронок, list_statuses/get_status/create_status/update_status/delete_status для статусов. Поддерживается батч-создание воронок (data.pipelines: [...]) и статусов (data.statuses: [...]).",
-		func(ctx *ai.ToolContext, input gkitmodels.AdminPipelinesInput) (any, error) {
-			switch input.Action {
-			// Pipelines
-			case "list", "search":
-				return r.adminPipelinesService.ListPipelines(ctx)
-			case "get":
-				if input.PipelineID == 0 {
-					return nil, fmt.Errorf("pipeline_id is required")
-				}
-				return r.adminPipelinesService.GetPipeline(ctx, input.PipelineID)
-			case "create":
-				var pipelines []*amomodels.Pipeline
-				data, _ := json.Marshal(input.Data["pipelines"])
-				if err := json.Unmarshal(data, &pipelines); err != nil {
-					return nil, fmt.Errorf("failed to parse pipelines: %w", err)
-				}
-				return r.adminPipelinesService.CreatePipelines(ctx, pipelines)
-			case "update":
-				var p amomodels.Pipeline
-				data, _ := json.Marshal(input.Data)
-				if err := json.Unmarshal(data, &p); err != nil {
-					return nil, fmt.Errorf("failed to parse pipeline data: %w", err)
-				}
-				if p.ID == 0 {
-					p.ID = input.PipelineID
-				}
-				if p.ID == 0 {
-					return nil, fmt.Errorf("pipeline id is required for update")
-				}
-				return r.adminPipelinesService.UpdatePipeline(ctx, &p)
-			case "delete":
-				if input.PipelineID == 0 {
-					return nil, fmt.Errorf("pipeline_id is required")
-				}
-				return nil, r.adminPipelinesService.DeletePipeline(ctx, input.PipelineID)
+		"Управление воронками и статусами amoCRM. "+
+			"Actions: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status. "+
+			"Вызови с action чтобы получить схему параметров.",
+		func(ctx *ai.ToolContext, raw map[string]any) (any, error) {
+			// Извлекаем action
+			actionVal, ok := raw["action"]
+			if !ok || actionVal == nil {
+				return nil, fmt.Errorf("поле action обязательно. Доступные: search, get, create, update, delete, get_statuses, get_status, create_status, update_status, delete_status")
+			}
+			action, ok := actionVal.(string)
+			if !ok || action == "" {
+				return nil, fmt.Errorf("action должен быть строкой")
+			}
 
-			// Statuses
-			case "list_statuses", "get_statuses":
-				if input.PipelineID == 0 {
-					return nil, fmt.Errorf("pipeline_id is required")
-				}
-				return r.adminPipelinesService.ListStatuses(ctx, input.PipelineID)
-			case "get_status":
-				if input.PipelineID == 0 || input.StatusID == 0 {
-					return nil, fmt.Errorf("pipeline_id and status_id are required")
-				}
-				return r.adminPipelinesService.GetStatus(ctx, input.PipelineID, input.StatusID)
-			case "create_status":
-				if input.PipelineID == 0 {
-					return nil, fmt.Errorf("pipeline_id is required")
-				}
-				// Batch mode: data.statuses
-				if statusesData, ok := input.Data["statuses"]; ok {
-					var statuses []*amomodels.Status
-					data, _ := json.Marshal(statusesData)
-					if err := json.Unmarshal(data, &statuses); err != nil {
-						return nil, fmt.Errorf("failed to parse statuses: %w", err)
+			// Schema-режим: обязательных полей нет → возвращаем схему
+			if adminPipelinesIsSchemaMode(action, raw) {
+				return adminPipelinesSchema(action)
+			}
+
+			// Execute-режим: json roundtrip map → AdminPipelinesInput
+			data, err := json.Marshal(raw)
+			if err != nil {
+				return nil, fmt.Errorf("ошибка сериализации входных данных: %w", err)
+			}
+			var input gkitmodels.AdminPipelinesInput
+			if err := json.Unmarshal(data, &input); err != nil {
+				return nil, fmt.Errorf("ошибка разбора входных данных: %w", err)
+			}
+
+			switch input.Action {
+
+			// --- Pipelines ---
+
+			case "list", "search":
+				result, err := r.adminPipelinesService.ListPipelines(ctx, input.WithStatuses)
+				b, _ := json.Marshal(result)
+				fmt.Printf("[admin_pipelines] search result: %s\n", string(b))
+				return result, err
+
+			case "get":
+				return r.adminPipelinesService.GetPipeline(ctx, input.PipelineID, input.PipelineName, input.WithStatuses)
+
+			case "create":
+				if len(input.Items) > 0 {
+					// Батч-режим: items — массив PipelineData
+					itemsData, err := json.Marshal(input.Items)
+					if err != nil {
+						return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
 					}
-					return r.adminPipelinesService.CreateStatuses(ctx, input.PipelineID, statuses)
+					var pipelines []gkitmodels.PipelineData
+					if err := json.Unmarshal(itemsData, &pipelines); err != nil {
+						return nil, fmt.Errorf("не удалось разобрать items как []PipelineData: %w", err)
+					}
+					return r.adminPipelinesService.CreatePipelines(ctx, pipelines)
 				}
-				// Single mode
-				var s amomodels.Status
-				data, _ := json.Marshal(input.Data)
-				if err := json.Unmarshal(data, &s); err != nil {
-					return nil, fmt.Errorf("failed to parse status data: %w", err)
+				if input.Pipeline != nil {
+					return r.adminPipelinesService.CreatePipelines(ctx, []gkitmodels.PipelineData{*input.Pipeline})
 				}
-				return r.adminPipelinesService.CreateStatus(ctx, input.PipelineID, &s)
+				return nil, fmt.Errorf("для create укажите pipeline или items")
+
+			case "update":
+				if input.Pipeline == nil {
+					return nil, fmt.Errorf("для update укажите pipeline с данными для обновления")
+				}
+				return r.adminPipelinesService.UpdatePipeline(ctx, input.PipelineID, input.PipelineName, *input.Pipeline)
+
+			case "delete":
+				return nil, r.adminPipelinesService.DeletePipeline(ctx, input.PipelineID, input.PipelineName)
+
+			// --- Statuses ---
+
+			case "list_statuses", "get_statuses":
+				return r.adminPipelinesService.ListStatuses(ctx, input.PipelineID, input.PipelineName)
+
+			case "get_status":
+				return r.adminPipelinesService.GetStatus(ctx, input.PipelineID, input.PipelineName, input.StatusID, input.StatusName)
+
+			case "create_status":
+				if len(input.Items) > 0 {
+					// Батч-режим: items — массив StatusData
+					itemsData, err := json.Marshal(input.Items)
+					if err != nil {
+						return nil, fmt.Errorf("не удалось сериализовать items: %w", err)
+					}
+					var statuses []gkitmodels.StatusData
+					if err := json.Unmarshal(itemsData, &statuses); err != nil {
+						return nil, fmt.Errorf("не удалось разобрать items как []StatusData: %w", err)
+					}
+					return r.adminPipelinesService.CreateStatuses(ctx, input.PipelineID, input.PipelineName, statuses)
+				}
+				if input.Status != nil {
+					return r.adminPipelinesService.CreateStatus(ctx, input.PipelineID, input.PipelineName, *input.Status)
+				}
+				return nil, fmt.Errorf("для create_status укажите status или items")
+
 			case "update_status":
-				if input.PipelineID == 0 {
-					return nil, fmt.Errorf("pipeline_id is required")
+				if input.Status == nil {
+					return nil, fmt.Errorf("для update_status укажите status с данными для обновления")
 				}
-				var s amomodels.Status
-				data, _ := json.Marshal(input.Data)
-				if err := json.Unmarshal(data, &s); err != nil {
-					return nil, fmt.Errorf("failed to parse status data: %w", err)
-				}
-				if s.ID == 0 {
-					s.ID = input.StatusID
-				}
-				if s.ID == 0 {
-					return nil, fmt.Errorf("status id is required for update")
-				}
-				return r.adminPipelinesService.UpdateStatus(ctx, input.PipelineID, &s)
+				return r.adminPipelinesService.UpdateStatus(ctx, input.PipelineID, input.PipelineName, input.StatusID, input.StatusName, *input.Status)
+
 			case "delete_status":
-				if input.PipelineID == 0 || input.StatusID == 0 {
-					return nil, fmt.Errorf("pipeline_id and status_id are required")
-				}
-				return nil, r.adminPipelinesService.DeleteStatus(ctx, input.PipelineID, input.StatusID)
+				return nil, r.adminPipelinesService.DeleteStatus(ctx, input.PipelineID, input.PipelineName, input.StatusID, input.StatusName)
 
 			default:
-				return nil, fmt.Errorf("unknown action: %s", input.Action)
+				return nil, fmt.Errorf("неизвестное действие: %s", input.Action)
 			}
 		},
 	))

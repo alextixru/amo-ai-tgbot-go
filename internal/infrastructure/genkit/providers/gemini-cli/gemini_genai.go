@@ -216,8 +216,13 @@ func toGeminiPart(p *ai.Part) (*genai.Part, error) {
 		if m, ok := toolResp.Output.(map[string]any); ok {
 			output = m
 		} else {
-			output = map[string]any{
-				"output": toolResp.Output,
+			// JSON roundtrip to convert structs/pointers to map[string]any
+			b, err := json.Marshal(toolResp.Output)
+			if err != nil {
+				return nil, fmt.Errorf("tool response marshal: %w", err)
+			}
+			if err := json.Unmarshal(b, &output); err != nil {
+				output = map[string]any{"output": string(b)}
 			}
 		}
 		gp = genai.NewPartFromFunctionResponse(toolResp.Name, output)

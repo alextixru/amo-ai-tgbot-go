@@ -2,6 +2,7 @@ package gkit
 
 import (
 	"context"
+	"fmt"
 
 	amocrm "github.com/alextixru/amocrm-sdk-go"
 	"github.com/firebase/genkit/go/ai"
@@ -32,8 +33,9 @@ type Agent struct {
 	chatFlow func(context.Context, flows.ChatInput) (flows.ChatOutput, error)
 }
 
-// NewAgent creates a new AI agent with registered flows and tools
-func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
+// NewAgent creates a new AI agent with registered flows and tools.
+// Returns an error if any service that requires preloading fails to initialise.
+func NewAgent(ctx context.Context, client *genkitClient.Client, sdk *amocrm.SDK) (*Agent, error) {
 	g := client.G
 	model := client.Model
 
@@ -41,14 +43,36 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 	store := session.NewMemoryStore()
 
 	// Инициализируем сервисы
-	entitiesSvc := entities.New(sdk)
-	activitiesSvc := activities.New(sdk)
-	complexCreateSvc := complex_create.NewService(sdk)
+	entitiesSvc, err := entities.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
+	activitiesSvc, err := activities.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
+
+	complexCreateSvc, err := complex_create.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
+
 	productsSvc := products.NewService(sdk)
-	catalogsSvc := catalogs.NewService(sdk)
+
+	catalogsSvc, err := catalogs.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
+
 	filesSvc := files.NewService(sdk)
-	unsortedSvc := unsorted.NewService(sdk)
-	customersSvc := customers.NewService(sdk)
+	unsortedSvc, err := unsorted.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
+	customersSvc, err := customers.New(ctx, sdk)
+	if err != nil {
+		return nil, fmt.Errorf("NewAgent: %w", err)
+	}
 	adminSchemaSvc := admin_schema.NewService(sdk)
 	adminPipelinesSvc := admin_pipelines.New(sdk)
 	adminUsersSvc := admin_users.NewService(sdk)
@@ -79,7 +103,7 @@ func NewAgent(client *genkitClient.Client, sdk *amocrm.SDK) *Agent {
 		g:        g,
 		model:    model,
 		chatFlow: chatRunner,
-	}
+	}, nil
 }
 
 // Process processes a user message using the chat flow with user context

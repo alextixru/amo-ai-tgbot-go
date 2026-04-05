@@ -69,7 +69,10 @@ func main() {
 	// === Application ===
 
 	// AI agent (needs SDK for tools)
-	agent := gkit.NewAgent(genkitClient, crmClient.SDK())
+	agent, err := gkit.NewAgent(ctx, genkitClient, crmClient.SDK())
+	if err != nil {
+		log.Fatalf("Failed to init AI agent: %v", err)
+	}
 
 	// Telegram service (business logic)
 	telegramSvc := telegram.NewService(agent, crmClient, authService)

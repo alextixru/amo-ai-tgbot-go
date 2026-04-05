@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 
@@ -13,12 +14,432 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 )
 
+// adminIntegrationsSchema — полная схема полей, возвращаемая в schema mode.
+// Не содержит dynamic available_values — admin tools работают с именами и ID напрямую.
+func adminIntegrationsSchema(layer, action string) map[string]any {
+	base := map[string]any{
+		"schema": true,
+		"tool":   "admin_integrations",
+		"layer":  layer,
+		"action": action,
+	}
+
+	switch layer {
+	case "webhooks":
+		return adminIntegrationsWebhooksSchema(base, action)
+	case "widgets":
+		return adminIntegrationsWidgetsSchema(base, action)
+	case "website_buttons":
+		return adminIntegrationsWebsiteButtonsSchema(base, action)
+	case "chat_templates":
+		return adminIntegrationsChatTemplatesSchema(base, action)
+	case "short_links":
+		return adminIntegrationsShortLinksSchema(base, action)
+	default:
+		base["description"] = "Неизвестный layer. Доступные: webhooks, widgets, website_buttons, chat_templates, short_links."
+		base["layers"] = []string{"webhooks", "widgets", "website_buttons", "chat_templates", "short_links"}
+		return base
+	}
+}
+
+func adminIntegrationsWebhooksSchema(base map[string]any, action string) map[string]any {
+	switch action {
+	case "search", "list":
+		base["description"] = "Получить список вебхуков."
+		base["optional_fields"] = map[string]any{
+			"filter": map[string]any{
+				"type":        "object",
+				"description": "Фильтр",
+				"fields": map[string]any{
+					"destination": map[string]any{"type": "string", "description": "Фильтр по URL вебхука"},
+				},
+			},
+		}
+		base["example"] = map[string]any{"layer": "webhooks", "action": "list"}
+	case "subscribe":
+		base["description"] = "Подписаться на вебхук."
+		base["required_fields"] = map[string]any{
+			"destination": map[string]any{"type": "string", "description": "URL вебхука"},
+		}
+		base["optional_fields"] = map[string]any{
+			"event_types": map[string]any{
+				"type":        "array",
+				"items":       "string",
+				"description": "События: add_lead, update_lead, delete_lead, restore_lead, status_lead, add_contact, update_contact, delete_contact, restore_contact, add_company, update_company, delete_company, restore_company, add_task, update_task, delete_task, complete_task, add_note, update_note, delete_note",
+			},
+		}
+		base["example"] = map[string]any{
+			"layer":       "webhooks",
+			"action":      "subscribe",
+			"destination": "https://example.com/webhook",
+			"event_types": []string{"add_lead", "update_lead"},
+		}
+	case "unsubscribe":
+		base["description"] = "Отписаться от вебхука."
+		base["required_fields"] = map[string]any{
+			"destination": map[string]any{"type": "string", "description": "URL вебхука"},
+		}
+		base["optional_fields"] = map[string]any{
+			"event_types": map[string]any{"type": "array", "items": "string", "description": "События для отписки (пусто = все)"},
+		}
+		base["example"] = map[string]any{
+			"layer":       "webhooks",
+			"action":      "unsubscribe",
+			"destination": "https://example.com/webhook",
+		}
+	default:
+		base["description"] = "Доступные actions для webhooks: list, subscribe, unsubscribe."
+		base["actions"] = []string{"list", "subscribe", "unsubscribe"}
+	}
+	return base
+}
+
+func adminIntegrationsWidgetsSchema(base map[string]any, action string) map[string]any {
+	switch action {
+	case "search", "list":
+		base["description"] = "Получить список виджетов."
+		base["optional_fields"] = map[string]any{
+			"filter": map[string]any{
+				"type":   "object",
+				"fields": map[string]any{"limit": map[string]any{"type": "integer"}, "page": map[string]any{"type": "integer"}},
+			},
+		}
+		base["example"] = map[string]any{"layer": "widgets", "action": "list"}
+	case "get":
+		base["description"] = "Получить виджет по коду."
+		base["required_fields"] = map[string]any{
+			"code": map[string]any{"type": "string", "description": "Код виджета"},
+		}
+		base["example"] = map[string]any{"layer": "widgets", "action": "get", "code": "widget_code"}
+	case "install":
+		base["description"] = "Установить виджет."
+		base["required_fields"] = map[string]any{
+			"code": map[string]any{"type": "string", "description": "Код виджета"},
+		}
+		base["optional_fields"] = map[string]any{
+			"settings": map[string]any{"type": "object", "description": "Настройки виджета (ключ-значение)"},
+		}
+		base["example"] = map[string]any{"layer": "widgets", "action": "install", "code": "widget_code"}
+	case "uninstall":
+		base["description"] = "Удалить виджет."
+		base["required_fields"] = map[string]any{
+			"code": map[string]any{"type": "string", "description": "Код виджета"},
+		}
+		base["example"] = map[string]any{"layer": "widgets", "action": "uninstall", "code": "widget_code"}
+	default:
+		base["description"] = "Доступные actions для widgets: list, get, install, uninstall."
+		base["actions"] = []string{"list", "get", "install", "uninstall"}
+	}
+	return base
+}
+
+func adminIntegrationsWebsiteButtonsSchema(base map[string]any, action string) map[string]any {
+	switch action {
+	case "search", "list":
+		base["description"] = "Получить список кнопок на сайте."
+		base["optional_fields"] = map[string]any{
+			"filter": map[string]any{"type": "object", "fields": map[string]any{"limit": map[string]any{"type": "integer"}, "page": map[string]any{"type": "integer"}}},
+			"with":   map[string]any{"type": "array", "items": "string", "description": "Обогащение: 'scripts' (скрипты), 'deleted' (удалённые)"},
+		}
+		base["example"] = map[string]any{"layer": "website_buttons", "action": "list"}
+	case "get":
+		base["description"] = "Получить кнопку по source_id."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "source_id кнопки"},
+		}
+		base["optional_fields"] = map[string]any{
+			"with": map[string]any{"type": "array", "items": "string", "description": "'scripts', 'deleted'"},
+		}
+		base["example"] = map[string]any{"layer": "website_buttons", "action": "get", "id": 123}
+	case "create":
+		base["description"] = "Создать кнопку на сайте."
+		base["required_fields"] = map[string]any{
+			"website_button": map[string]any{
+				"type":        "object",
+				"description": "Данные кнопки",
+				"required_fields": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Название кнопки"},
+				},
+				"optional_fields": map[string]any{
+					"pipeline_id":                    map[string]any{"type": "integer", "description": "ID воронки (получить через admin_pipelines: list)"},
+					"trusted_websites":               map[string]any{"type": "array", "items": "string", "description": "Доверенные сайты"},
+					"is_duplication_control_enabled": map[string]any{"type": "boolean", "description": "Контроль дублей"},
+				},
+			},
+		}
+		base["example"] = map[string]any{
+			"layer":  "website_buttons",
+			"action": "create",
+			"website_button": map[string]any{
+				"name":             "Кнопка на сайте",
+				"trusted_websites": []string{"example.com"},
+			},
+		}
+	case "update":
+		base["description"] = "Обновить кнопку на сайте."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "source_id кнопки"},
+		}
+		base["optional_fields"] = map[string]any{
+			"website_button": map[string]any{
+				"type": "object",
+				"fields": map[string]any{
+					"name":                           map[string]any{"type": "string"},
+					"pipeline_id":                    map[string]any{"type": "integer"},
+					"trusted_websites":               map[string]any{"type": "array", "items": "string"},
+					"is_duplication_control_enabled": map[string]any{"type": "boolean"},
+				},
+			},
+		}
+		base["example"] = map[string]any{
+			"layer": "website_buttons", "action": "update", "id": 123,
+			"website_button": map[string]any{"name": "Новое название"},
+		}
+	case "add_chat":
+		base["description"] = "Добавить онлайн-чат к кнопке."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "source_id кнопки"},
+		}
+		base["example"] = map[string]any{"layer": "website_buttons", "action": "add_chat", "id": 123}
+	default:
+		base["description"] = "Доступные actions для website_buttons: list, get, create, update, add_chat."
+		base["actions"] = []string{"list", "get", "create", "update", "add_chat"}
+	}
+	return base
+}
+
+func adminIntegrationsChatTemplatesSchema(base map[string]any, action string) map[string]any {
+	switch action {
+	case "search", "list":
+		base["description"] = "Получить список шаблонов чата."
+		base["optional_fields"] = map[string]any{
+			"filter": map[string]any{
+				"type": "object",
+				"fields": map[string]any{
+					"limit":         map[string]any{"type": "integer"},
+					"page":          map[string]any{"type": "integer"},
+					"external_ids":  map[string]any{"type": "array", "items": "string", "description": "Внешние ID"},
+					"template_type": map[string]any{"type": "string", "description": "Тип шаблона: amocrm или waba"},
+				},
+			},
+		}
+		base["example"] = map[string]any{"layer": "chat_templates", "action": "list"}
+	case "create":
+		base["description"] = "Создать шаблон чата."
+		base["required_fields"] = map[string]any{
+			"chat_template": map[string]any{
+				"type": "object",
+				"required_fields": map[string]any{
+					"name":    map[string]any{"type": "string", "description": "Название шаблона"},
+					"content": map[string]any{"type": "string", "description": "Текст шаблона"},
+					"type":    map[string]any{"type": "string", "description": "Тип: amocrm или waba"},
+				},
+				"optional_fields": map[string]any{
+					"external_id":   map[string]any{"type": "string", "description": "Внешний ID"},
+					"is_editable":   map[string]any{"type": "boolean"},
+					"waba_header":   map[string]any{"type": "string", "description": "Заголовок WABA"},
+					"waba_footer":   map[string]any{"type": "string", "description": "Подвал WABA"},
+					"waba_category": map[string]any{"type": "string", "description": "UTILITY, AUTHENTICATION, MARKETING"},
+					"waba_language": map[string]any{"type": "string", "description": "Язык (ru, en)"},
+				},
+			},
+		}
+		base["example"] = map[string]any{
+			"layer": "chat_templates", "action": "create",
+			"chat_template": map[string]any{"name": "Приветствие", "content": "Здравствуйте!", "type": "amocrm"},
+		}
+	case "update":
+		base["description"] = "Обновить шаблон чата."
+		base["required_fields"] = map[string]any{
+			"id":            map[string]any{"type": "integer", "description": "ID шаблона"},
+			"chat_template": map[string]any{"type": "object", "description": "Поля для обновления (те же что в create)"},
+		}
+		base["example"] = map[string]any{
+			"layer": "chat_templates", "action": "update", "id": 456,
+			"chat_template": map[string]any{"name": "Новое название"},
+		}
+	case "delete":
+		base["description"] = "Удалить шаблон чата."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "ID шаблона"},
+		}
+		base["example"] = map[string]any{"layer": "chat_templates", "action": "delete", "id": 456}
+	case "delete_many":
+		base["description"] = "Удалить несколько шаблонов чата."
+		base["required_fields"] = map[string]any{
+			"ids": map[string]any{"type": "array", "items": "integer", "description": "Массив ID шаблонов"},
+		}
+		base["example"] = map[string]any{"layer": "chat_templates", "action": "delete_many", "ids": []int{1, 2, 3}}
+	case "send_review":
+		base["description"] = "Отправить шаблон на ревью."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "ID шаблона"},
+		}
+		base["example"] = map[string]any{"layer": "chat_templates", "action": "send_review", "id": 456}
+	case "update_review":
+		base["description"] = "Обновить статус ревью шаблона."
+		base["required_fields"] = map[string]any{
+			"id":            map[string]any{"type": "integer", "description": "ID шаблона"},
+			"review_id":     map[string]any{"type": "integer", "description": "ID ревью (из ответа send_review)"},
+			"review_status": map[string]any{"type": "string", "description": "Новый статус ревью"},
+		}
+		base["example"] = map[string]any{
+			"layer": "chat_templates", "action": "update_review",
+			"id": 456, "review_id": 789, "review_status": "approved",
+		}
+	default:
+		base["description"] = "Доступные actions для chat_templates: list, create, update, delete, delete_many, send_review, update_review."
+		base["actions"] = []string{"list", "create", "update", "delete", "delete_many", "send_review", "update_review"}
+	}
+	return base
+}
+
+func adminIntegrationsShortLinksSchema(base map[string]any, action string) map[string]any {
+	switch action {
+	case "search", "list":
+		base["description"] = "Получить список коротких ссылок."
+		base["optional_fields"] = map[string]any{
+			"filter": map[string]any{"type": "object", "fields": map[string]any{"limit": map[string]any{"type": "integer"}, "page": map[string]any{"type": "integer"}}},
+		}
+		base["example"] = map[string]any{"layer": "short_links", "action": "list"}
+	case "create":
+		base["description"] = "Создать короткую ссылку (одну или батч)."
+		base["required_fields"] = map[string]any{
+			"url": map[string]any{"type": "string", "description": "URL для сокращения (для одной ссылки)"},
+		}
+		base["optional_fields"] = map[string]any{
+			"urls":        map[string]any{"type": "array", "items": "string", "description": "Массив URL (батч-создание; если указан, url/entity_id/entity_type игнорируются)"},
+			"entity_id":   map[string]any{"type": "integer", "description": "ID сущности для привязки"},
+			"entity_type": map[string]any{"type": "string", "description": "Тип: leads, contacts, companies, customers"},
+		}
+		base["example"] = map[string]any{
+			"layer": "short_links", "action": "create",
+			"url": "https://example.com/very/long/url",
+		}
+	case "delete":
+		base["description"] = "Удалить короткую ссылку."
+		base["required_fields"] = map[string]any{
+			"id": map[string]any{"type": "integer", "description": "ID ссылки"},
+		}
+		base["example"] = map[string]any{"layer": "short_links", "action": "delete", "id": 123}
+	default:
+		base["description"] = "Доступные actions для short_links: list, create, delete."
+		base["actions"] = []string{"list", "create", "delete"}
+	}
+	return base
+}
+
+// isSchemaMode определяет, нужно ли вернуть схему вместо выполнения.
+// Логика: проверяем наличие обязательных полей для конкретного layer+action.
+func adminIntegrationsIsSchemaMode(layer, action string, m map[string]any) bool {
+	strVal := func(key string) string {
+		v, _ := m[key].(string)
+		return v
+	}
+	intVal := func(key string) int {
+		switch v := m[key].(type) {
+		case float64:
+			return int(v)
+		case int:
+			return v
+		}
+		return 0
+	}
+	hasKey := func(key string) bool {
+		v, ok := m[key]
+		return ok && v != nil
+	}
+
+	switch layer {
+	case "webhooks":
+		switch action {
+		case "subscribe", "unsubscribe":
+			return strVal("destination") == ""
+		}
+	case "widgets":
+		switch action {
+		case "get", "install", "uninstall":
+			return strVal("code") == ""
+		}
+	case "website_buttons":
+		switch action {
+		case "get", "update", "add_chat":
+			return intVal("id") == 0
+		case "create":
+			return !hasKey("website_button")
+		}
+	case "chat_templates":
+		switch action {
+		case "create":
+			return !hasKey("chat_template")
+		case "update":
+			return intVal("id") == 0 || !hasKey("chat_template")
+		case "delete", "send_review":
+			return intVal("id") == 0
+		case "delete_many":
+			ids, _ := m["ids"].([]any)
+			return len(ids) == 0
+		case "update_review":
+			return intVal("id") == 0 || intVal("review_id") == 0 || strVal("review_status") == ""
+		}
+	case "short_links":
+		switch action {
+		case "create":
+			// Батч-режим через urls не требует url
+			if urls, ok := m["urls"].([]any); ok && len(urls) > 0 {
+				return false
+			}
+			return strVal("url") == ""
+		case "delete":
+			return intVal("id") == 0
+		}
+	}
+	// list/search и неизвестные action — не schema mode (выполняем или отдаём ошибку)
+	return false
+}
+
 func (r *Registry) RegisterAdminIntegrationsTool() {
-	r.addTool(genkit.DefineTool[gkitmodels.AdminIntegrationsInput, any](
+	r.addTool(genkit.DefineTool[any, any](
 		r.g,
 		"admin_integrations",
-		"Work with webhooks, widgets, website buttons (with scripts), chat templates and short links",
-		func(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
+		"Управление вебхуками, виджетами, кнопками сайта, шаблонами чата и короткими ссылками amoCRM. "+
+			"Layers: webhooks, widgets, website_buttons, chat_templates, short_links. "+
+			"Вызови с {\"layer\": \"<layer>\", \"action\": \"<action>\"} чтобы получить схему параметров.",
+		func(ctx *ai.ToolContext, rawInput any) (any, error) {
+			// Привести rawInput к map[string]any
+			m, ok := rawInput.(map[string]any)
+			if !ok {
+				b, err := json.Marshal(rawInput)
+				if err != nil {
+					return adminIntegrationsSchema("", ""), nil
+				}
+				if err := json.Unmarshal(b, &m); err != nil {
+					return adminIntegrationsSchema("", ""), nil
+				}
+			}
+
+			layer, _ := m["layer"].(string)
+			action, _ := m["action"].(string)
+
+			if layer == "" || action == "" {
+				return adminIntegrationsSchema(layer, action), nil
+			}
+
+			// Schema mode: обязательные поля для данного action отсутствуют
+			if adminIntegrationsIsSchemaMode(layer, action, m) {
+				return adminIntegrationsSchema(layer, action), nil
+			}
+
+			// Execute mode: JSON roundtrip map → AdminIntegrationsInput → существующий handler
+			b, err := json.Marshal(m)
+			if err != nil {
+				return nil, fmt.Errorf("admin_integrations: marshal input: %w", err)
+			}
+			var input gkitmodels.AdminIntegrationsInput
+			if err := json.Unmarshal(b, &input); err != nil {
+				return nil, fmt.Errorf("admin_integrations: unmarshal input: %w", err)
+			}
+
 			switch input.Layer {
 			case "webhooks":
 				return r.handleWebhooks(ctx, input)
@@ -37,6 +458,14 @@ func (r *Registry) RegisterAdminIntegrationsTool() {
 	))
 }
 
+// unixToRFC3339 конвертирует Unix timestamp в строку RFC3339. Возвращает пустую строку если ts == 0.
+func unixToRFC3339(ts int64) string {
+	if ts == 0 {
+		return ""
+	}
+	return time.Unix(ts, 0).UTC().Format(time.RFC3339)
+}
+
 func (r *Registry) handleWebhooks(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
 	switch input.Action {
 	case "search", "list":
@@ -47,35 +476,43 @@ func (r *Registry) handleWebhooks(ctx *ai.ToolContext, input gkitmodels.AdminInt
 				filter.SetDestination(input.Filter.Destination)
 			}
 		}
-		return r.adminIntegrationsService.ListWebhooks(ctx, filter)
+		webhooks, err := r.adminIntegrationsService.ListWebhooks(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+		// Форматируем timestamps, убираем AccountID
+		type webhookOut struct {
+			ID          int      `json:"id,omitempty"`
+			Destination string   `json:"destination,omitempty"`
+			Settings    []string `json:"settings,omitempty"`
+			CreatedAt   string   `json:"created_at,omitempty"`
+			UpdatedAt   string   `json:"updated_at,omitempty"`
+			Disabled    bool     `json:"disabled,omitempty"`
+		}
+		out := make([]webhookOut, 0, len(webhooks))
+		for _, w := range webhooks {
+			out = append(out, webhookOut{
+				ID:          w.ID,
+				Destination: w.Destination,
+				Settings:    w.Settings,
+				CreatedAt:   unixToRFC3339(w.CreatedAt),
+				UpdatedAt:   unixToRFC3339(w.UpdatedAt),
+				Disabled:    w.Disabled,
+			})
+		}
+		return out, nil
 	case "subscribe":
-		dest, _ := input.Data["destination"].(string)
+		dest := input.Destination
 		if dest == "" {
 			return nil, fmt.Errorf("destination is required for subscribe")
 		}
-		var settings []string
-		if s, ok := input.Data["settings"].([]any); ok {
-			for _, v := range s {
-				if str, ok := v.(string); ok {
-					settings = append(settings, str)
-				}
-			}
-		}
-		return r.adminIntegrationsService.SubscribeWebhook(ctx, dest, settings)
+		return r.adminIntegrationsService.SubscribeWebhook(ctx, dest, input.EventTypes)
 	case "unsubscribe":
-		dest, _ := input.Data["destination"].(string)
+		dest := input.Destination
 		if dest == "" {
 			return nil, fmt.Errorf("destination is required for unsubscribe")
 		}
-		var settings []string
-		if s, ok := input.Data["settings"].([]any); ok {
-			for _, v := range s {
-				if str, ok := v.(string); ok {
-					settings = append(settings, str)
-				}
-			}
-		}
-		return nil, r.adminIntegrationsService.UnsubscribeWebhook(ctx, dest, settings)
+		return nil, r.adminIntegrationsService.UnsubscribeWebhook(ctx, dest, input.EventTypes)
 	default:
 		return nil, fmt.Errorf("unknown action for webhooks: %s", input.Action)
 	}
@@ -104,13 +541,7 @@ func (r *Registry) handleWidgets(ctx *ai.ToolContext, input gkitmodels.AdminInte
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for install widget")
 		}
-		settings := input.Settings
-		if settings == nil {
-			if s, ok := input.Data["settings"].(map[string]any); ok {
-				settings = s
-			}
-		}
-		return r.adminIntegrationsService.InstallWidget(ctx, input.Code, settings)
+		return r.adminIntegrationsService.InstallWidget(ctx, input.Code, input.Settings)
 	case "uninstall":
 		if input.Code == "" {
 			return nil, fmt.Errorf("code is required for uninstall widget")
@@ -125,7 +556,6 @@ func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.Ad
 	switch input.Action {
 	case "search", "list":
 		var filter *services.WebsiteButtonsFilter
-		var with []string
 		if input.Filter != nil {
 			filter = &services.WebsiteButtonsFilter{}
 			if input.Filter.Limit > 0 {
@@ -134,32 +564,60 @@ func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.Ad
 			if input.Filter.Page > 0 {
 				filter.Page = input.Filter.Page
 			}
-			with = input.Filter.With
 		}
-		return r.adminIntegrationsService.ListWebsiteButtons(ctx, filter, with)
+		buttons, err := r.adminIntegrationsService.ListWebsiteButtons(ctx, filter, input.With)
+		if err != nil {
+			return nil, err
+		}
+		return stripWebsiteButtonsAccountID(buttons), nil
 	case "get":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for get website button")
 		}
-		var with []string
-		if input.Filter != nil {
-			with = input.Filter.With
+		button, err := r.adminIntegrationsService.GetWebsiteButton(ctx, input.ID, input.With)
+		if err != nil {
+			return nil, err
 		}
-		return r.adminIntegrationsService.GetWebsiteButton(ctx, input.ID, with)
+		if button == nil {
+			return nil, nil
+		}
+		return stripWebsiteButtonAccountID(button), nil
 	case "create":
-		var req amomodels.WebsiteButtonCreateRequest
-		data, _ := json.Marshal(input.Data)
-		if err := json.Unmarshal(data, &req); err != nil {
-			return nil, fmt.Errorf("failed to parse website button create request: %w", err)
+		if input.WebsiteButton == nil {
+			return nil, fmt.Errorf("website_button is required for create")
 		}
-		return r.adminIntegrationsService.CreateWebsiteButton(ctx, &req)
+		req := &amomodels.WebsiteButtonCreateRequest{
+			Name:            input.WebsiteButton.Name,
+			TrustedWebsites: input.WebsiteButton.TrustedWebsites,
+		}
+		if input.WebsiteButton.PipelineID != nil {
+			req.PipelineID = *input.WebsiteButton.PipelineID
+		}
+		if input.WebsiteButton.IsDuplicationControlEnabled != nil {
+			req.IsDuplicationControlEnabled = *input.WebsiteButton.IsDuplicationControlEnabled
+		}
+		return r.adminIntegrationsService.CreateWebsiteButton(ctx, req)
 	case "update":
-		var req amomodels.WebsiteButtonUpdateRequest
-		data, _ := json.Marshal(input.Data)
-		if err := json.Unmarshal(data, &req); err != nil {
-			return nil, fmt.Errorf("failed to parse website button update request: %w", err)
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id (source_id) is required for update website button")
 		}
-		return r.adminIntegrationsService.UpdateWebsiteButton(ctx, &req)
+		req := &amomodels.WebsiteButtonUpdateRequest{
+			SourceID: input.ID, // BUG FIX: заполняем SourceID из input.ID
+		}
+		if input.WebsiteButton != nil {
+			req.Name = input.WebsiteButton.Name
+			req.TrustedWebsites = input.WebsiteButton.TrustedWebsites
+			req.PipelineID = input.WebsiteButton.PipelineID
+			req.IsDuplicationControlEnabled = input.WebsiteButton.IsDuplicationControlEnabled
+		}
+		button, err := r.adminIntegrationsService.UpdateWebsiteButton(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if button == nil {
+			return nil, nil
+		}
+		return stripWebsiteButtonAccountID(button), nil
 	case "add_chat":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id (source_id) is required for add_chat")
@@ -168,6 +626,41 @@ func (r *Registry) handleWebsiteButtons(ctx *ai.ToolContext, input gkitmodels.Ad
 	default:
 		return nil, fmt.Errorf("unknown action for website_buttons: %s", input.Action)
 	}
+}
+
+// websiteButtonOut — ответная структура без AccountID
+type websiteButtonOut struct {
+	SourceID                    int    `json:"source_id,omitempty"`
+	ButtonID                    *int   `json:"button_id,omitempty"`
+	Name                        string `json:"name,omitempty"`
+	PipelineID                  *int   `json:"pipeline_id,omitempty"`
+	IsDuplicationControlEnabled bool   `json:"is_duplication_control_enabled,omitempty"`
+	CreationStatus              string `json:"creation_status,omitempty"`
+	Script                      string `json:"script,omitempty"`
+	IsDeleted                   bool   `json:"is_deleted,omitempty"`
+}
+
+func stripWebsiteButtonAccountID(b *amomodels.WebsiteButton) websiteButtonOut {
+	return websiteButtonOut{
+		SourceID:                    b.SourceID,
+		ButtonID:                    b.ButtonID,
+		Name:                        b.Name,
+		PipelineID:                  b.PipelineID,
+		IsDuplicationControlEnabled: b.IsDuplicationControlEnabled,
+		CreationStatus:              b.CreationStatus,
+		Script:                      b.Script,
+		IsDeleted:                   b.IsDeleted,
+	}
+}
+
+func stripWebsiteButtonsAccountID(buttons []*amomodels.WebsiteButton) []websiteButtonOut {
+	out := make([]websiteButtonOut, 0, len(buttons))
+	for _, b := range buttons {
+		if b != nil {
+			out = append(out, stripWebsiteButtonAccountID(b))
+		}
+	}
+	return out
 }
 
 func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.AdminIntegrationsInput) (any, error) {
@@ -186,7 +679,45 @@ func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.Adm
 				filter.SetExternalIDs(input.Filter.ExternalIDs)
 			}
 		}
-		return r.adminIntegrationsService.ListChatTemplates(ctx, filter)
+		templates, err := r.adminIntegrationsService.ListChatTemplates(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+		// Фильтрация по TemplateType на стороне клиента (API не поддерживает)
+		if input.Filter != nil && input.Filter.TemplateType != "" {
+			filtered := templates[:0]
+			for _, t := range templates {
+				if string(t.Type) == input.Filter.TemplateType {
+					filtered = append(filtered, t)
+				}
+			}
+			templates = filtered
+		}
+		return formatChatTemplates(templates), nil
+	case "create":
+		if input.ChatTemplate == nil {
+			return nil, fmt.Errorf("chat_template is required for create")
+		}
+		tmpl := chatTemplateDataToModel(input.ChatTemplate)
+		result, err := r.adminIntegrationsService.CreateChatTemplate(ctx, tmpl)
+		if err != nil {
+			return nil, err
+		}
+		return formatChatTemplate(result), nil
+	case "update":
+		if input.ID == 0 {
+			return nil, fmt.Errorf("id is required for update chat template")
+		}
+		if input.ChatTemplate == nil {
+			return nil, fmt.Errorf("chat_template is required for update")
+		}
+		tmpl := chatTemplateDataToModel(input.ChatTemplate)
+		tmpl.ID = input.ID
+		result, err := r.adminIntegrationsService.UpdateChatTemplate(ctx, tmpl)
+		if err != nil {
+			return nil, err
+		}
+		return formatChatTemplate(result), nil
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete chat template")
@@ -201,19 +732,110 @@ func (r *Registry) handleChatTemplates(ctx *ai.ToolContext, input gkitmodels.Adm
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for send chat template on review")
 		}
-		return r.adminIntegrationsService.SendChatTemplateOnReview(ctx, input.ID)
+		reviews, err := r.adminIntegrationsService.SendChatTemplateOnReview(ctx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		return formatChatTemplateReviews(reviews), nil
 	case "update_review":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for update chat template review status")
 		}
-		reviewID, _ := input.Data["review_id"].(float64)
-		status, _ := input.Data["status"].(string)
-		if reviewID == 0 || status == "" {
-			return nil, fmt.Errorf("review_id and status are required for update_review")
+		if input.ReviewID == 0 {
+			return nil, fmt.Errorf("review_id is required for update_review (получить из ответа send_review)")
 		}
-		return r.adminIntegrationsService.UpdateChatTemplateReviewStatus(ctx, input.ID, int(reviewID), status)
+		if input.ReviewStatus == "" {
+			return nil, fmt.Errorf("review_status is required for update_review")
+		}
+		review, err := r.adminIntegrationsService.UpdateChatTemplateReviewStatus(ctx, input.ID, input.ReviewID, input.ReviewStatus)
+		if err != nil {
+			return nil, err
+		}
+		return formatChatTemplateReview(review), nil
 	default:
 		return nil, fmt.Errorf("unknown action for chat_templates: %s", input.Action)
+	}
+}
+
+// chatTemplateOut — ответная структура без AccountID, с форматированными timestamps
+type chatTemplateOut struct {
+	ID         int    `json:"id,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Content    string `json:"content,omitempty"`
+	ExternalID string `json:"external_id,omitempty"`
+	Type       string `json:"type,omitempty"`
+	IsEditable bool   `json:"is_editable,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+	WabaHeader string `json:"waba_header,omitempty"`
+	WabaFooter string `json:"waba_footer,omitempty"`
+}
+
+// chatTemplateReviewOut — ответная структура ревью с форматированным timestamp
+type chatTemplateReviewOut struct {
+	ID        int    `json:"id,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+func formatChatTemplate(t *amomodels.ChatTemplate) chatTemplateOut {
+	if t == nil {
+		return chatTemplateOut{}
+	}
+	return chatTemplateOut{
+		ID:         t.ID,
+		Name:       t.Name,
+		Content:    t.Content,
+		ExternalID: t.ExternalID,
+		Type:       string(t.Type),
+		IsEditable: t.IsEditable,
+		CreatedAt:  unixToRFC3339(t.CreatedAt),
+		UpdatedAt:  unixToRFC3339(t.UpdatedAt),
+		WabaHeader: t.WabaHeader,
+		WabaFooter: t.WabaFooter,
+	}
+}
+
+func formatChatTemplates(templates []*amomodels.ChatTemplate) []chatTemplateOut {
+	out := make([]chatTemplateOut, 0, len(templates))
+	for _, t := range templates {
+		out = append(out, formatChatTemplate(t))
+	}
+	return out
+}
+
+func formatChatTemplateReview(r *amomodels.ChatTemplateReview) chatTemplateReviewOut {
+	if r == nil {
+		return chatTemplateReviewOut{}
+	}
+	return chatTemplateReviewOut{
+		ID:        r.ID,
+		Status:    r.Status,
+		Reason:    r.Reason,
+		CreatedAt: unixToRFC3339(r.CreatedAt),
+	}
+}
+
+func formatChatTemplateReviews(reviews []amomodels.ChatTemplateReview) []chatTemplateReviewOut {
+	out := make([]chatTemplateReviewOut, 0, len(reviews))
+	for i := range reviews {
+		out = append(out, formatChatTemplateReview(&reviews[i]))
+	}
+	return out
+}
+
+func chatTemplateDataToModel(d *gkitmodels.ChatTemplateData) *amomodels.ChatTemplate {
+	return &amomodels.ChatTemplate{
+		Name:         d.Name,
+		Content:      d.Content,
+		ExternalID:   d.ExternalID,
+		Type:         amomodels.ChatTemplateType(d.Type),
+		IsEditable:   d.IsEditable,
+		WabaHeader:   d.WabaHeader,
+		WabaFooter:   d.WabaFooter,
+		WabaCategory: amomodels.ChatTemplateCategory(d.WabaCategory),
+		WabaLanguage: d.WabaLanguage,
 	}
 }
 
@@ -233,13 +855,24 @@ func (r *Registry) handleShortLinks(ctx *ai.ToolContext, input gkitmodels.AdminI
 		return r.adminIntegrationsService.ListShortLinks(ctx, filter)
 	case "create":
 		if len(input.URLs) > 0 {
-			return r.adminIntegrationsService.CreateShortLinks(ctx, input.URLs)
+			// Батч-создание: entity_id/entity_type не поддерживается для батча
+			links := make([]amomodels.ShortLink, 0, len(input.URLs))
+			for _, u := range input.URLs {
+				links = append(links, amomodels.ShortLink{URL: u})
+			}
+			return r.adminIntegrationsService.CreateShortLinks(ctx, links)
 		}
-		url, _ := input.Data["url"].(string)
-		if url == "" {
+		// Одиночное создание
+		u := input.URL
+		if u == "" {
 			return nil, fmt.Errorf("url is required for create short link")
 		}
-		return r.adminIntegrationsService.CreateShortLink(ctx, url)
+		link := amomodels.ShortLink{
+			URL:        u,
+			EntityID:   input.EntityID,
+			EntityType: input.EntityType,
+		}
+		return r.adminIntegrationsService.CreateShortLink(ctx, link)
 	case "delete":
 		if input.ID == 0 {
 			return nil, fmt.Errorf("id is required for delete short link")

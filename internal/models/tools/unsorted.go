@@ -14,6 +14,9 @@ type UnsortedInput struct {
 	// AcceptParams параметры принятия (для accept)
 	AcceptParams *UnsortedAcceptParams `json:"accept_params,omitempty" jsonschema_description:"Параметры принятия заявки"`
 
+	// DeclineParams параметры отклонения (для decline)
+	DeclineParams *UnsortedDeclineParams `json:"decline_params,omitempty" jsonschema_description:"Параметры отклонения заявки"`
+
 	// LinkData данные привязки (для link)
 	LinkData *UnsortedLinkData `json:"link_data,omitempty" jsonschema_description:"Данные для привязки к сделке"`
 
@@ -29,25 +32,34 @@ type UnsortedCreateData struct {
 
 // UnsortedCreateItem данные одной заявки
 type UnsortedCreateItem struct {
-	SourceUID  string         `json:"source_uid,omitempty" jsonschema_description:"Уникальный идентификатор источника"`
-	SourceName string         `json:"source_name,omitempty" jsonschema_description:"Название источника"`
-	PipelineID int            `json:"pipeline_id,omitempty" jsonschema_description:"ID воронки для создания сделки"`
-	CreatedAt  int            `json:"created_at,omitempty" jsonschema_description:"Unix timestamp создания"`
-	Data       map[string]any `json:"data,omitempty" jsonschema_description:"Дополнительные данные (custom_fields_values, tags и т.д.)"`
+	SourceUID    string         `json:"source_uid,omitempty" jsonschema_description:"Уникальный идентификатор источника"`
+	SourceName   string         `json:"source_name,omitempty" jsonschema_description:"Название источника"`
+	PipelineName string         `json:"pipeline_name,omitempty" jsonschema_description:"Название воронки для создания сделки"`
+	CreatedAt    string         `json:"created_at,omitempty" jsonschema_description:"Дата создания в формате RFC3339 (например, 2024-01-15T10:30:00Z)"`
+	Data         map[string]any `json:"data,omitempty" jsonschema_description:"Дополнительные данные (custom_fields_values, tags и т.д.)"`
 }
 
 // UnsortedFilter фильтры поиска неразобранного
 type UnsortedFilter struct {
-	Page       int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	Limit      int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
-	Category   []string `json:"category,omitempty" jsonschema_description:"Категории: sip, mail, forms, chats"`
-	PipelineID []int    `json:"pipeline_id,omitempty" jsonschema_description:"ID воронок"`
+	Page           int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Limit          int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов"`
+	Category       []string `json:"category,omitempty" jsonschema_description:"Категории: sip, mail, forms, chats"`
+	PipelineName   string   `json:"pipeline_name,omitempty" jsonschema_description:"Название воронки для фильтрации"`
+	CreatedAtFrom  string   `json:"created_at_from,omitempty" jsonschema_description:"Начало диапазона даты создания (RFC3339, например 2024-01-01T00:00:00Z)"`
+	CreatedAtTo    string   `json:"created_at_to,omitempty" jsonschema_description:"Конец диапазона даты создания (RFC3339, например 2024-01-31T23:59:59Z)"`
+	Order          string   `json:"order,omitempty" jsonschema_description:"Сортировка по дате создания: 'created_at asc' или 'created_at desc'"`
 }
 
 // UnsortedAcceptParams параметры принятия неразобранного
 type UnsortedAcceptParams struct {
-	UserID   int `json:"user_id,omitempty" jsonschema_description:"ID ответственного пользователя"`
-	StatusID int `json:"status_id,omitempty" jsonschema_description:"ID статуса для создаваемой сделки"`
+	UserName     string `json:"user_name,omitempty" jsonschema_description:"Имя ответственного пользователя"`
+	PipelineName string `json:"pipeline_name,omitempty" jsonschema_description:"Название воронки для создаваемой сделки"`
+	StatusName   string `json:"status_name,omitempty" jsonschema_description:"Название статуса для создаваемой сделки"`
+}
+
+// UnsortedDeclineParams параметры отклонения неразобранного
+type UnsortedDeclineParams struct {
+	UserName string `json:"user_name,omitempty" jsonschema_description:"Имя пользователя, выполняющего отклонение"`
 }
 
 // UnsortedLinkData данные для привязки неразобранного

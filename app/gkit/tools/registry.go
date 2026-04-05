@@ -73,7 +73,6 @@ func (r *Registry) RegisterAll() {
 	r.RegisterEntitiesTool()
 	r.RegisterActivitiesTool()
 	r.RegisterComplexCreateTool()
-	r.RegisterComplexCreateBatchTool()
 	r.RegisterProductsTool()
 	r.RegisterCatalogsTool()
 	r.RegisterFilesTool()

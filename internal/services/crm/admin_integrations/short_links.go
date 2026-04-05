@@ -12,9 +12,8 @@ func (s *service) ListShortLinks(ctx context.Context, filter *filters.ShortLinks
 	return links, err
 }
 
-func (s *service) CreateShortLink(ctx context.Context, url string) (models.ShortLink, error) {
-	links := []models.ShortLink{{URL: url}}
-	res, _, err := s.sdk.ShortLinks().Create(ctx, links)
+func (s *service) CreateShortLink(ctx context.Context, link models.ShortLink) (models.ShortLink, error) {
+	res, _, err := s.sdk.ShortLinks().Create(ctx, []models.ShortLink{link})
 	if err != nil {
 		return models.ShortLink{}, err
 	}
@@ -24,11 +23,7 @@ func (s *service) CreateShortLink(ctx context.Context, url string) (models.Short
 	return res[0], nil
 }
 
-func (s *service) CreateShortLinks(ctx context.Context, urls []string) ([]models.ShortLink, error) {
-	var links []models.ShortLink
-	for _, url := range urls {
-		links = append(links, models.ShortLink{URL: url})
-	}
+func (s *service) CreateShortLinks(ctx context.Context, links []models.ShortLink) ([]models.ShortLink, error) {
 	res, _, err := s.sdk.ShortLinks().Create(ctx, links)
 	return res, err
 }

@@ -5,37 +5,101 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/alextixru/amocrm-sdk-go/core/filters"
 	"github.com/alextixru/amocrm-sdk-go/core/models"
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
-var (
-	productsCatalogID int
-	catalogIDOnce     sync.Once
-)
+// hardcoded popular currency codes by ID (amoCRM standard)
+var currencyCodes = map[int]string{
+	1:  "RUB",
+	2:  "USD",
+	3:  "EUR",
+	4:  "GBP",
+	5:  "UAH",
+	6:  "KZT",
+	7:  "BYR",
+	8:  "CNY",
+	9:  "TRY",
+	10: "AED",
+}
 
 func (s *service) findProductsCatalogID(ctx context.Context) (int, error) {
-	var err error
-	catalogIDOnce.Do(func() {
+	var findErr error
+	s.catalogIDOnce.Do(func() {
 		f := filters.NewCatalogsFilter().SetType("products")
-		catalogs, _, findErr := s.sdk.Catalogs().Get(ctx, f)
-		if findErr != nil {
-			err = fmt.Errorf("failed to find products catalog: %w", findErr)
+		catalogs, _, err := s.sdk.Catalogs().Get(ctx, f)
+		if err != nil {
+			findErr = fmt.Errorf("failed to find products catalog: %w", err)
 			return
 		}
 		if len(catalogs) == 0 {
-			err = fmt.Errorf("products catalog not found")
+			findErr = fmt.Errorf("products catalog not found")
 			return
 		}
-		productsCatalogID = catalogs[0].ID
+		s.productsCatalogID = catalogs[0].ID
 	})
-	return productsCatalogID, err
+	return s.productsCatalogID, findErr
 }
 
-func (s *service) SearchProducts(ctx context.Context, filter *gkitmodels.ProductFilter) ([]*models.CatalogElement, error) {
+// findFirstPriceFieldID загружает кастомные поля каталога и возвращает ID первого поля типа price
+func (s *service) findFirstPriceFieldID(ctx context.Context, catalogID int) (int, error) {
+	entityType := fmt.Sprintf("catalogs/%d", catalogID)
+	fields, _, err := s.sdk.CustomFields().Get(ctx, entityType, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get catalog custom fields: %w", err)
+	}
+	for _, f := range fields {
+		if f.Type == "price" {
+			return f.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("no price field found in products catalog")
+}
+
+// resolveCurrencyCode резолвит числовой ID валюты в код (например 1 → "RUB")
+func resolveCurrencyCode(id int) string {
+	if id == 0 {
+		return ""
+	}
+	if code, ok := currencyCodes[id]; ok {
+		return code
+	}
+	return fmt.Sprintf("[unknown_currency:%d]", id)
+}
+
+// convertProductFields конвертирует []ProductFieldInput → []models.CustomFieldValue через field_code
+func convertProductFields(fields []gkitmodels.ProductFieldInput) []models.CustomFieldValue {
+	if len(fields) == 0 {
+		return nil
+	}
+	result := make([]models.CustomFieldValue, 0, len(fields))
+	for _, f := range fields {
+		cfv := models.CustomFieldValue{
+			FieldCode: f.FieldCode,
+			Values: []models.FieldValueElement{
+				{Value: f.Value},
+			},
+		}
+		result = append(result, cfv)
+	}
+	return result
+}
+
+// productDataToElement конвертирует ProductData в *models.CatalogElement
+func productDataToElement(d gkitmodels.ProductData) *models.CatalogElement {
+	el := &models.CatalogElement{
+		Name:               d.Name,
+		CustomFieldsValues: convertProductFields(d.Fields),
+	}
+	if d.ID != 0 {
+		el.ID = d.ID
+	}
+	return el
+}
+
+func (s *service) SearchProducts(ctx context.Context, filter *gkitmodels.ProductFilter, with []string) (*ProductSearchResult, error) {
 	catalogID, err := s.findProductsCatalogID(ctx)
 	if err != nil {
 		return nil, err
@@ -51,17 +115,37 @@ func (s *service) SearchProducts(ctx context.Context, filter *gkitmodels.Product
 		}
 		if filter.Limit > 0 {
 			f.SetLimit(filter.Limit)
+		} else {
+			f.SetLimit(50)
 		}
 		if filter.Page > 0 {
 			f.SetPage(filter.Page)
+		} else {
+			f.SetPage(1)
 		}
 	} else {
 		f.SetLimit(50)
 		f.SetPage(1)
 	}
 
-	elements, _, err := s.sdk.CatalogElements(catalogID).Get(ctx, f)
-	return elements, err
+	// Прокидываем with в параметры запроса через BaseFilter.SetWith
+	if len(with) > 0 {
+		f.SetWith(with...)
+	}
+
+	elements, meta, err := s.sdk.CatalogElements(catalogID).Get(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ProductSearchResult{
+		Items: elements,
+	}
+	if meta != nil {
+		result.Page = meta.Page
+		result.HasMore = meta.HasMore
+	}
+	return result, nil
 }
 
 func (s *service) GetProduct(ctx context.Context, id int, with []string) (*models.CatalogElement, error) {
@@ -77,38 +161,46 @@ func (s *service) GetProduct(ctx context.Context, id int, with []string) (*model
 	return s.sdk.CatalogElements(catalogID).GetOne(ctx, id, params)
 }
 
-func (s *service) CreateProducts(ctx context.Context, elements []*models.CatalogElement) ([]*models.CatalogElement, error) {
+func (s *service) CreateProducts(ctx context.Context, items []gkitmodels.ProductData) ([]*models.CatalogElement, error) {
 	catalogID, err := s.findProductsCatalogID(ctx)
 	if err != nil {
 		return nil, err
+	}
+	elements := make([]*models.CatalogElement, 0, len(items))
+	for _, d := range items {
+		elements = append(elements, productDataToElement(d))
 	}
 	created, _, err := s.sdk.CatalogElements(catalogID).Create(ctx, elements)
 	return created, err
 }
 
-func (s *service) UpdateProducts(ctx context.Context, elements []*models.CatalogElement) ([]*models.CatalogElement, error) {
+func (s *service) UpdateProducts(ctx context.Context, items []gkitmodels.ProductData) ([]*models.CatalogElement, error) {
 	catalogID, err := s.findProductsCatalogID(ctx)
 	if err != nil {
 		return nil, err
+	}
+	elements := make([]*models.CatalogElement, 0, len(items))
+	for _, d := range items {
+		elements = append(elements, productDataToElement(d))
 	}
 	updated, _, err := s.sdk.CatalogElements(catalogID).Update(ctx, elements)
 	return updated, err
 }
 
-func (s *service) DeleteProducts(ctx context.Context, ids []int) error {
+func (s *service) DeleteProducts(ctx context.Context, ids []int) (*OperationResult, error) {
 	catalogID, err := s.findProductsCatalogID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, id := range ids {
 		if err := s.sdk.CatalogElements(catalogID).Delete(ctx, id); err != nil {
-			return fmt.Errorf("failed to delete product %d: %w", id, err)
+			return nil, fmt.Errorf("failed to delete product %d: %w", id, err)
 		}
 	}
-	return nil
+	return &OperationResult{OK: true, Action: "delete"}, nil
 }
 
-func (s *service) GetProductsByEntity(ctx context.Context, entityType string, entityID int) ([]models.EntityLink, error) {
+func (s *service) GetProductsByEntity(ctx context.Context, entityType string, entityID int) ([]ProductWithLink, error) {
 	links, err := s.sdk.Links().Get(ctx, entityType, entityID, nil)
 	if err != nil {
 		return nil, err
@@ -119,33 +211,60 @@ func (s *service) GetProductsByEntity(ctx context.Context, entityType string, en
 		return nil, err
 	}
 
-	var productLinks []models.EntityLink
+	var result []ProductWithLink
 	for _, link := range links {
-		// В метаданных связи должен быть catalog_id
-		if link.ToEntityType == "catalog_elements" {
-			if cid, ok := link.Metadata["catalog_id"].(float64); ok && int(cid) == catalogID {
-				productLinks = append(productLinks, *link)
-			}
+		if link.ToEntityType != "catalog_elements" {
+			continue
 		}
+		if cid, ok := link.Metadata["catalog_id"].(float64); !ok || int(cid) != catalogID {
+			continue
+		}
+
+		product, err := s.GetProduct(ctx, link.ToEntityID, []string{"supplier_field_values"})
+		if err != nil {
+			// Если не удалось загрузить товар — добавляем с пустым Product, не ломаем ответ
+			result = append(result, ProductWithLink{Link: *link, Product: nil})
+			continue
+		}
+
+		// Резолвим числовые ID в читаемые значения
+		currCode := resolveCurrencyCode(product.CurrencyID)
+
+		result = append(result, ProductWithLink{Link: *link, Product: product, CurrencyCode: currCode})
 	}
-	return productLinks, nil
+	return result, nil
 }
 
-func (s *service) LinkProduct(ctx context.Context, entityType string, entityID int, productID int, quantity int, priceID int) error {
+func (s *service) LinkProduct(ctx context.Context, entityType string, entityID int, productID int, quantity int, priceID int) (*OperationResult, error) {
 	catalogID, err := s.findProductsCatalogID(ctx)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// Если price_id не передан — берём первое ценовое поле каталога
+	if priceID == 0 {
+		priceID, err = s.findFirstPriceFieldID(ctx, catalogID)
+		if err != nil {
+			// Не критично — продолжаем без price_id
+			priceID = 0
+		}
 	}
 
 	link := models.NewCatalogElementLink(entityType, entityID, catalogID, productID, float64(quantity), priceID)
 	_, err = s.sdk.Links().Link(ctx, entityType, entityID, []*models.EntityLink{link})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return &OperationResult{OK: true, Action: "link", ProductID: productID, EntityID: entityID}, nil
 }
 
-func (s *service) UnlinkProduct(ctx context.Context, entityType string, entityID int, productID int) error {
+func (s *service) UnlinkProduct(ctx context.Context, entityType string, entityID int, productID int) (*OperationResult, error) {
 	link := &models.EntityLink{
 		ToEntityType: "catalog_elements",
 		ToEntityID:   productID,
 	}
-	return s.sdk.Links().Unlink(ctx, entityType, entityID, []*models.EntityLink{link})
+	if err := s.sdk.Links().Unlink(ctx, entityType, entityID, []*models.EntityLink{link}); err != nil {
+		return nil, err
+	}
+	return &OperationResult{OK: true, Action: "unlink", ProductID: productID, EntityID: entityID}, nil
 }

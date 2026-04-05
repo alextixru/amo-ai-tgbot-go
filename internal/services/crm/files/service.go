@@ -9,12 +9,33 @@ import (
 	gkitmodels "github.com/tihn/amo-ai-tgbot-go/internal/models/tools"
 )
 
+// FileListResult результат листинга файлов с метаданными пагинации
+type FileListResult struct {
+	// Items список файлов
+	Items []*models.File `json:"items"`
+
+	// Total общее количество элементов (если API вернул)
+	Total int `json:"total"`
+
+	// HasMore есть ли ещё страницы
+	HasMore bool `json:"has_more"`
+}
+
+// Service интерфейс сервиса работы с файлами
 type Service interface {
-	ListFiles(ctx context.Context, filter *gkitmodels.FileFilter) ([]*models.File, error)
-	GetFile(ctx context.Context, uuid string) (*models.File, error)
+	// ListFiles возвращает список файлов с поддержкой расширенной фильтрации и пагинации
+	ListFiles(ctx context.Context, filter *gkitmodels.FileFilter) (*FileListResult, error)
+
+	// GetFile возвращает файл по UUID; withDeleted=true позволяет получить удалённый файл
+	GetFile(ctx context.Context, uuid string, withDeleted bool) (*models.File, error)
+
+	// UploadFile загружает файл в amoCRM Drive
 	UploadFile(ctx context.Context, params services.FileUploadParams) (*models.File, error)
+
+	// UpdateFile переименовывает файл
 	UpdateFile(ctx context.Context, uuid, name string) (*models.File, error)
-	DeleteFile(ctx context.Context, uuid string) error
+
+	// DeleteFiles удаляет один или несколько файлов по UUID
 	DeleteFiles(ctx context.Context, uuids []string) error
 }
 

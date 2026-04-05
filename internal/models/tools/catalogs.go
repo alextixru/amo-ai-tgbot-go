@@ -2,14 +2,17 @@ package tools
 
 // CatalogsInput входные параметры для инструмента catalogs
 type CatalogsInput struct {
-	// Action действие: list, get, create, update, list_elements, get_element, create_element, update_element, link_element, unlink_element
-	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update, list_elements, get_element, create_element, update_element, link_element, unlink_element"`
+	// Action действие: list, get, create, update, delete, list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element
+	Action string `json:"action" jsonschema_description:"Действие: list, get, create, update, delete (каталоги), list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element (элементы)"`
 
-	// CatalogID ID каталога (для get, update, list_elements, get_element, create_element, update_element, link_element, unlink_element)
-	CatalogID int `json:"catalog_id,omitempty" jsonschema_description:"ID каталога"`
+	// CatalogName название каталога (для get, update, delete, list_elements, get_element, create_element, update_element, delete_element, link_element, unlink_element)
+	CatalogName string `json:"catalog_name,omitempty" jsonschema_description:"Название каталога (например: 'Товары', 'Услуги', 'Счета')"`
 
-	// ElementID ID элемента (для get_element, update_element, link_element, unlink_element)
+	// ElementID ID элемента (для get_element, update_element, delete_element, link_element, unlink_element)
 	ElementID int `json:"element_id,omitempty" jsonschema_description:"ID элемента каталога"`
+
+	// With дополнительные данные: invoice_link, supplier_field_values
+	With []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные для get_element: invoice_link, supplier_field_values"`
 
 	// Filter параметры поиска
 	Filter *CatalogFilter `json:"filter,omitempty" jsonschema_description:"Фильтры поиска"`
@@ -24,20 +27,21 @@ type CatalogsInput struct {
 	LinkData *ElementLinkData `json:"link_data,omitempty" jsonschema_description:"Данные связи элемента с сущностью"`
 }
 
-// CatalogFilter фильтры поиска
+// CatalogFilter фильтры поиска элементов и каталогов
 type CatalogFilter struct {
-	Page  int      `json:"page,omitempty" jsonschema_description:"Номер страницы (начиная с 1)"`
-	Limit int      `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50, максимум 250)"`
-	Query string   `json:"query,omitempty" jsonschema_description:"Поисковый запрос по названию элемента каталога"`
-	IDs   []int    `json:"ids,omitempty" jsonschema_description:"Фильтр по массиву ID элементов"`
-	With  []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные для get_element: invoice_link, supplier_field_values"`
+	Page  int    `json:"page,omitempty" jsonschema_description:"Номер страницы (начиная с 1)"`
+	Limit int    `json:"limit,omitempty" jsonschema_description:"Лимит результатов (по умолчанию 50, максимум 250)"`
+	Query string `json:"query,omitempty" jsonschema_description:"Поисковый запрос по названию элемента каталога"`
+	IDs   []int  `json:"ids,omitempty" jsonschema_description:"Фильтр по массиву ID элементов"`
+	// Type фильтр по типу каталога для action=list: regular, invoices, products
+	Type string `json:"type,omitempty" jsonschema_description:"Тип каталога для фильтрации списка: regular, invoices, products"`
 }
 
 // ElementLinkData данные для связи элемента каталога с сущностью
 type ElementLinkData struct {
 	EntityType string         `json:"entity_type" jsonschema_description:"Тип сущности: leads, contacts, companies, customers"`
 	EntityID   int            `json:"entity_id" jsonschema_description:"ID сущности"`
-	Metadata   map[string]any `json:"metadata,omitempty" jsonschema_description:"Метаданные связи (quantity, price_id и др.)"`
+	Metadata   map[string]any `json:"metadata,omitempty" jsonschema_description:"Метаданные связи: quantity (float64), price_id (int)"`
 }
 
 // CatalogData данные каталога
@@ -49,8 +53,14 @@ type CatalogData struct {
 	CanLinkMultiple bool   `json:"can_link_multiple,omitempty" jsonschema_description:"Разрешить множественную привязку"`
 }
 
+// CatalogFieldValue значение кастомного поля элемента каталога
+type CatalogFieldValue struct {
+	FieldCode string `json:"field_code" jsonschema_description:"Код кастомного поля"`
+	Value     string `json:"value" jsonschema_description:"Значение поля"`
+}
+
 // CatalogElementData данные элемента каталога
 type CatalogElementData struct {
-	Name               string         `json:"name" jsonschema_description:"Название элемента"`
-	CustomFieldsValues map[string]any `json:"custom_fields_values,omitempty" jsonschema_description:"Значения кастомных полей"`
+	Name               string              `json:"name" jsonschema_description:"Название элемента"`
+	CustomFieldsValues []CatalogFieldValue `json:"custom_fields_values,omitempty" jsonschema_description:"Значения кастомных полей: [{field_code, value}]"`
 }

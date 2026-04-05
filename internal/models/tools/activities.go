@@ -15,8 +15,8 @@ type ActivitiesInput struct {
 	ID int `json:"id,omitempty" jsonschema_description:"ID элемента (для get, update, complete)"`
 
 	// Типизированные Data по layer (для одиночных операций)
-	TaskData *TaskData `json:"task_data,omitempty" jsonschema_description:"Данные задачи (layer=tasks)"`
-	NoteData *NoteData `json:"note_data,omitempty" jsonschema_description:"Данные примечания (layer=notes)"`
+	TaskData *TaskData `json:"task_data,omitempty" jsonschema_description:"Данные задачи (layer=tasks). Используй tasks_data для батч-создания"`
+	NoteData *NoteData `json:"note_data,omitempty" jsonschema_description:"Данные примечания (layer=notes). Используй notes_data для батч-создания"`
 	CallData *CallData `json:"call_data,omitempty" jsonschema_description:"Данные звонка (layer=calls)"`
 
 	// Массивы для батч-операций (используются если Action=create/link)
@@ -36,48 +36,51 @@ type ActivitiesInput struct {
 	// Специфические параметры действий
 	ResultText string   `json:"result_text,omitempty" jsonschema_description:"Текст результата (для tasks.complete)"`
 	ForceClose bool     `json:"force_close,omitempty" jsonschema_description:"Принудительное закрытие беседы (для talks.close)"`
-	With       []string `json:"with,omitempty" jsonschema_description:"Связанные данные (например: contact, lead для задач)"`
+	With       []string `json:"with,omitempty" jsonschema_description:"Связанные данные для задач (например: leads, contacts)"`
 
 	// Параметры пользователей (для subscriptions)
-	UserIDs []int `json:"user_ids,omitempty" jsonschema_description:"ID пользователей (для subscribe)"`
-	UserID  int   `json:"user_id,omitempty" jsonschema_description:"ID пользователя (для unsubscribe)"`
+	UserNames []string `json:"user_names,omitempty" jsonschema_description:"Имена пользователей (для subscribe)"`
+	UserName  string   `json:"user_name,omitempty" jsonschema_description:"Имя пользователя (для unsubscribe)"`
 
 	// Параметры файлов (для files.link/unlink)
 	FileUUIDs []string `json:"file_uuids,omitempty" jsonschema_description:"UUID файлов (для files.link)"`
 	FileUUID  string   `json:"file_uuid,omitempty" jsonschema_description:"UUID файла (для files.unlink)"`
 
-	// Параметры чатов (для talks.close)
-	TalkID string `json:"talk_id,omitempty" jsonschema_description:"ID чата (для talks.close)"`
+	// Параметры чатов (для talks.close/get)
+	TalkID string `json:"talk_id,omitempty" jsonschema_description:"ID чата (для talks.close и talks.get)"`
 
 	// Одиночная цель для связывания (совместимость)
 	LinkTo *LinkTarget `json:"link_to,omitempty" jsonschema_description:"Цель связывания (для links.link/unlink)"`
 
-	// Название тега (совместимость)
-	TagName string `json:"tag_name,omitempty" jsonschema_description:"Название тега (для tags.create)"`
+	// Название тега (для create/delete)
+	TagName string `json:"tag_name,omitempty" jsonschema_description:"Название тега (для tags.create и tags.delete — альтернатива tag_id)"`
 	TagID   int    `json:"tag_id,omitempty" jsonschema_description:"ID тега (для tags.delete)"`
 }
 
 // TasksFilter критерии поиска задач
 type TasksFilter struct {
-	Limit             int    `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
-	Page              int    `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	Order             string `json:"order,omitempty" jsonschema:"enum=complete_till,enum=created_at" jsonschema_description:"Поле сортировки (по умолчанию complete_till)"`
-	OrderDir          string `json:"order_dir,omitempty" jsonschema:"enum=asc,enum=desc" jsonschema_description:"Направление сортировки (по умолчанию asc)"`
-	IDs               []int  `json:"ids,omitempty" jsonschema_description:"ID конкретных задач"`
-	ResponsibleUserID []int  `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственных"`
-	IsCompleted       *bool  `json:"is_completed,omitempty" jsonschema_description:"Статус завершения (true/false)"`
-	TaskTypeID        int    `json:"task_type_id,omitempty" jsonschema_description:"ID типа задачи"`
-	DateRange         string `json:"date_range,omitempty" jsonschema:"enum=today,enum=tomorrow,enum=overdue,enum=this_week,enum=next_week" jsonschema_description:"Диапазон дат (клиентская фильтрация)"`
-	Query             string `json:"query,omitempty" jsonschema_description:"Поисковый запрос (влияет только на лимиты в задачах)"`
-	UpdatedAt         *int64 `json:"updated_at,omitempty" jsonschema_description:"Фильтр по дате изменения (timestamp)"`
+	Limit                  int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 50)"`
+	Page                   int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Order                  string   `json:"order,omitempty" jsonschema:"enum=complete_till,enum=created_at" jsonschema_description:"Поле сортировки (по умолчанию complete_till)"`
+	OrderDir               string   `json:"order_dir,omitempty" jsonschema:"enum=asc,enum=desc" jsonschema_description:"Направление сортировки (по умолчанию asc)"`
+	IDs                    []int    `json:"ids,omitempty" jsonschema_description:"ID конкретных задач"`
+	ResponsibleUserNames   []string `json:"responsible_user_names,omitempty" jsonschema_description:"Имена ответственных пользователей"`
+	CreatedByNames         []string `json:"created_by_names,omitempty" jsonschema_description:"Имена создателей задач"`
+	IsCompleted            *bool    `json:"is_completed,omitempty" jsonschema_description:"Статус завершения (true/false)"`
+	TaskType               string   `json:"task_type,omitempty" jsonschema:"enum=follow_up,enum=meeting" jsonschema_description:"Тип задачи: follow_up=Связаться, meeting=Встреча"`
+	DateRange              string   `json:"date_range,omitempty" jsonschema:"enum=today,enum=tomorrow,enum=overdue,enum=this_week,enum=next_week" jsonschema_description:"Диапазон дат (клиентская фильтрация)"`
+	Query                  string   `json:"query,omitempty" jsonschema_description:"Поисковый запрос (влияет только на лимиты в задачах)"`
+	UpdatedAt              *int64   `json:"updated_at,omitempty" jsonschema_description:"Фильтр по дате изменения — от (Unix timestamp)"`
+	UpdatedAtTo            *int64   `json:"updated_at_to,omitempty" jsonschema_description:"Фильтр по дате изменения — до (Unix timestamp)"`
 }
 
 // EventsFilter критерии фильтрации событий
 type EventsFilter struct {
-	Limit     int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 100)"`
-	Page      int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
-	Types     []string `json:"types,omitempty" jsonschema_description:"Типы событий: lead_added, lead_status_changed, contact_added, etc."`
-	CreatedBy []int    `json:"created_by,omitempty" jsonschema_description:"ID создателей событий"`
+	Limit          int      `json:"limit,omitempty" jsonschema_description:"Лимит записей (до 100)"`
+	Page           int      `json:"page,omitempty" jsonschema_description:"Номер страницы"`
+	Types          []string `json:"types,omitempty" jsonschema_description:"Типы событий: lead_added, lead_status_changed, contact_added, etc."`
+	CreatedByNames []string `json:"created_by_names,omitempty" jsonschema_description:"Имена создателей событий"`
+	With           []string `json:"with,omitempty" jsonschema_description:"Дополнительные данные: contact_name, lead_name, company_name, catalog_element_name, customer_name, catalog_name, note"`
 }
 
 // NotesFilter критерии фильтрации примечаний
@@ -115,10 +118,10 @@ type LinksFilter struct {
 
 // TaskData данные для создания/обновления задачи
 type TaskData struct {
-	Text              string `json:"text" jsonschema_description:"Текст задачи (обязательно)"`
-	ResponsibleUserID int    `json:"responsible_user_id,omitempty" jsonschema_description:"ID ответственного"`
-	TaskTypeID        int    `json:"task_type_id,omitempty" jsonschema_description:"ID типа задачи (1=звонок, 2=встреча, 3=письмо)"`
-	Deadline          string `json:"deadline,omitempty" jsonschema_description:"Срок выполнения: 'today', 'tomorrow', 'in 2 hours', 'in 3 days', '2024-01-15', '2024-01-15T14:00'"`
+	Text                string `json:"text" jsonschema_description:"Текст задачи (обязательно)"`
+	ResponsibleUserName string `json:"responsible_user_name,omitempty" jsonschema_description:"Имя ответственного пользователя"`
+	TaskType            string `json:"task_type,omitempty" jsonschema:"enum=follow_up,enum=meeting" jsonschema_description:"Тип задачи: follow_up=Связаться, meeting=Встреча"`
+	Deadline            string `json:"deadline,omitempty" jsonschema_description:"Срок выполнения: 'today', 'tomorrow', 'in 2 hours', 'in 3 days', '2024-01-15', '2024-01-15T14:00'"`
 }
 
 // NoteData данные для создания/обновления примечания
@@ -134,7 +137,7 @@ type CallData struct {
 	Source     string `json:"source,omitempty" jsonschema_description:"Источник звонка"`
 	Phone      string `json:"phone" jsonschema_description:"Номер телефона"`
 	CallResult string `json:"call_result,omitempty" jsonschema_description:"Результат звонка"`
-	CallStatus int    `json:"call_status,omitempty" jsonschema_description:"Статус: 1=успех, 2=занято, 3=нет ответа, 4=не удалось, 5=голосовая почта, 6=неправильный номер"`
+	CallStatus int    `json:"call_status,omitempty" jsonschema_description:"Статус: 1=оставить_сообщение, 2=перезвонить, 3=недоступен, 4=занято, 5=неверный_номер, 6=нет_ответа, 7=успешный_звонок"`
 	UniqueID   string `json:"unique_id,omitempty" jsonschema_description:"Уникальный ID звонка"`
 	RecordURL  string `json:"record_url,omitempty" jsonschema_description:"Ссылка на запись звонка"`
 }
