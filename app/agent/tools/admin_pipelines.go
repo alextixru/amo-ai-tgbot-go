@@ -110,10 +110,10 @@ func (t *AdminPipelinesTool) Run(ctx tool.Context, args any) (map[string]any, er
 		res, err := t.service.ListPipelines(ctx, inp.WithStatuses)
 		b, _ := json.Marshal(res)
 		fmt.Printf("[admin_pipelines] search result: %s\n", string(b))
-		result, err = res, err
 		if err != nil {
 			return nil, err
 		}
+		result = res
 
 	case "get":
 		res, err := t.service.GetPipeline(ctx, inp.PipelineID, inp.PipelineName, inp.WithStatuses)
