@@ -281,8 +281,9 @@ func (s *Service) HandlePipelines(ctx context.Context) string {
 
 // ProcessAI processes a message through the AI agent
 func (s *Service) ProcessAI(ctx context.Context, telegramUserID int64, chatID int64, text string) (string, error) {
+	userID := fmt.Sprintf("tg_%d", telegramUserID)
 	sessionID := fmt.Sprintf("tg_%d", chatID)
-	return s.agent.Process(ctx, sessionID, text)
+	return s.agent.Process(ctx, userID, sessionID, text)
 }
 
 // IsAuthenticated returns true if the user has a valid Google token

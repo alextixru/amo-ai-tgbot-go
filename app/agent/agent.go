@@ -58,11 +58,11 @@ func NewAgent(ctx context.Context, llmModel model.LLM, toolsets ...tool.Toolset)
 }
 
 // Process processes a user message through the ADK Runner.
-func (a *Agent) Process(ctx context.Context, sessionID, message string) (string, error) {
+func (a *Agent) Process(ctx context.Context, userID, sessionID, message string) (string, error) {
 	userMsg := genai.NewContentFromText(message, genai.RoleUser)
 
 	var result strings.Builder
-	for event, err := range a.runner.Run(ctx, sessionID, sessionID, userMsg, adkagent.RunConfig{}) {
+	for event, err := range a.runner.Run(ctx, userID, sessionID, userMsg, adkagent.RunConfig{}) {
 		if err != nil {
 			return "", fmt.Errorf("agent run: %w", err)
 		}
